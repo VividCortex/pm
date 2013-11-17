@@ -3,6 +3,7 @@ package pm
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -71,19 +72,22 @@ func (p *Proclist) Status(id, status string) func() {
 			p.lens["status"] = len(status)
 		}
 		if proc.kill != "" {
-			return func() { panic(proc.kill) }
+			message := fmt.Sprintf("process killed: %q", proc.kill)
+			return func() { panic(message) }
 		}
 		return func() {}
 	}
 	return func() { panic("no such process " + id) }
 }
 
-func (p *Proclist) Kill(id, message string) {
+func (p *Proclist) Kill(id, message string) error {
 	p.m.Lock()
 	defer p.m.Unlock()
 	if proc, present := p.procs[id]; present {
 		proc.kill = message
+		return nil
 	}
+	return ProcessNotFound
 }
 
 func (p *Proclist) Contents() io.Reader {
@@ -111,7 +115,6 @@ func (p *Proclist) Contents() io.Reader {
 
 	// Write the header, then the rows
 	fmt.Fprintf(&b, strings.Replace(format, "%10.4f", "%10s", 1), cols...)
-	fmt.Fprintf(&b, "%s\n", format)
 	for id, proc := range p.procs {
 		var vars = []interface{}{id, proc.status, float64(time.Since(proc.start)) / float64(time.Second)}
 		for n, val := range proc.cols {
@@ -134,9 +137,54 @@ func (p *Proclist) ListenAndServe(addr string) error {
 		if err != nil {
 			return err
 		}
+
+		// Start a command-listener on this connection. It will look for
+		// commands and execute them. (kill <id> <msg>, delay <duration>)
 		go func() {
 			defer c.Close()
-			serveConn(p.Contents(), c)
+			delay := time.Second * 3
+			go func() {
+				buf := make([]byte, 32*1024)
+				for {
+					n, err := c.Read(buf)
+					if n > 0 {
+						fields := strings.SplitN(strings.TrimSpace(string(buf[:n])), " ", 3)
+						switch fields[0] {
+						case "kill":
+							if len(fields) == 3 {
+								killErr := p.Kill(fields[1], fields[2])
+								if killErr != nil {
+									c.Write([]byte(ProcessNotFound.Error() + "\n"))
+								}
+							} else {
+								fmt.Fprint(c, "invalid command\n")
+							}
+						case "delay":
+							if len(fields) == 2 {
+								d, err := time.ParseDuration(fields[1])
+								if err != nil {
+									fmt.Fprintf(c, "invalid duration '%s'\n", fields[1])
+								} else {
+									delay = d
+								}
+							} else {
+								fmt.Fprint(c, "invalid command\n")
+							}
+						}
+					}
+					if err != nil { // If we were logging we'd log if ! io.EOF, but...
+						c.Close() // will cause the for-loop to close also
+						return
+					}
+				}
+			}()
+			for {
+				_, err := io.Copy(c, p.Contents())
+				if err != nil {
+					return // the conn will be closed by defer
+				}
+				time.Sleep(delay)
+			}
 		}()
 	}
 }
@@ -156,15 +204,15 @@ func (p *Proc) Status(status string, t time.Time) {
 
 var pl *Proclist // The default proclist
 
+var (
+	ProcessNotFound error = errors.New("no such process")
+)
+
 func init() {
 	pl = &Proclist{
 		procs: make(map[string]*Proc),
 		lens:  make(map[string]int),
 	}
-}
-
-func serveConn(r io.Reader, w io.Writer) {
-	io.Copy(w, r)
 }
 
 func SetCols(cols ...string) {
@@ -183,8 +231,8 @@ func Status(id, status string) func() {
 	return pl.Status(id, status)
 }
 
-func Kill(id, message string) {
-	pl.Kill(id, message)
+func Kill(id, message string) error {
+	return pl.Kill(id, message)
 }
 
 func Contents() io.Reader {
