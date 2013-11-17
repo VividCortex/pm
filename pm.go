@@ -47,6 +47,7 @@ func (p *Proclist) Start(id string, cols map[string]interface{}) {
 	if len(id) > p.lens["id"] {
 		p.lens["id"] = len(id)
 	}
+	p.lens["status"] = 6 // len("status")
 }
 
 func (p *Proclist) Done(id string) *Proc {
@@ -110,6 +111,7 @@ func (p *Proclist) Contents() io.Reader {
 
 	// Write the header, then the rows
 	fmt.Fprintf(&b, strings.Replace(format, "%10.4f", "%10s", 1), cols...)
+	fmt.Fprintf(&b, "%s\n", format)
 	for id, proc := range p.procs {
 		var vars = []interface{}{id, proc.status, float64(time.Since(proc.start)) / float64(time.Second)}
 		for n, val := range proc.cols {
