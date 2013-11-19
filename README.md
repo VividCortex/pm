@@ -3,9 +3,12 @@ pm
 
 ![build status](https://circleci.com/gh/VividCortex/pm.png?circle-token=d37ec652ea117165cd1b342400a801438f575209)
 
-pm is a process manager with a TCP interface. We use it at
+pm is a process manager with a TCP interface. We plan to use it at
 [VividCortex](https://vividcortex.com/) to inspect and manage API server
-programs.
+programs. It replaces an internal-only project that was similar.
+
+pm is in beta and will change rapidly. Please see the issues list for what's
+planned, or to suggest changes.
 
 A processlist is useful for inspecting and managing what's running in a
 program, such as an HTTP server or other server program. Processes within this
@@ -93,7 +96,7 @@ Contributing
 ============
 
 Pull requests (with tests, ideally) are welcome! We're especially interested
-in ways to improve performance or correctness, or to make the code more
+in things such as ways to improve performance or correctness, or to make the code more
 idiomatic Go.
 
 License
