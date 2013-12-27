@@ -1,3 +1,8 @@
+// Copyright (c) 2013 VividCortex. Please see the LICENSE file for license terms.
+
+/*
+This package provides an HTTP client to use with pm-enabled processes.
+*/
 package client
 
 import (
@@ -16,6 +21,7 @@ type Client struct {
 	Headers map[string]string
 }
 
+// NewClient returns a new client set to connect to the given URI.
 func NewClient(uri string) *Client {
 	return &Client{
 		Client:  &http.Client{},
@@ -57,6 +63,8 @@ func (c *Client) makeRequest(verb, endpoint string, body, result interface{}) er
 	return err
 }
 
+// Processes issues a GET to /proc, thus retrieving the full process list from
+// the server. The result is provided as a ProcResponse.
 func (c *Client) Processes() (*pm.ProcResponse, error) {
 	var result pm.ProcResponse
 	if err := c.makeRequest("GET", "/proc", nil, &result); err != nil {
@@ -65,6 +73,8 @@ func (c *Client) Processes() (*pm.ProcResponse, error) {
 	return &result, nil
 }
 
+// Journal issues a GET to /proc/<id>/journal for a given id, thus returning the
+// complete history for the task <id> at the server.
 func (c *Client) Journal(id string) (*pm.JournalResponse, error) {
 	var result pm.JournalResponse
 	endpoint := fmt.Sprintf("/proc/%s/journal", id)
@@ -75,6 +85,8 @@ func (c *Client) Journal(id string) (*pm.JournalResponse, error) {
 	return &result, nil
 }
 
+// Kill requests the cancellation of a given task. Note that it will effectively
+// be cancelled as soon as the task reaches its next cancellation point.
 func (c *Client) Kill(id, message string) error {
 	body := pm.CancelRequest{Message: message}
 	endpoint := fmt.Sprintf("/proc/%s/cancel", id)

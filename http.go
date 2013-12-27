@@ -145,9 +145,17 @@ func (pl *Proclist) handleProcActionReq(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// ListenAndServe starts an HTTP server at the given address (localhost:80
+// by default, as results from the underlying net/http implementation).
 func (pl *Proclist) ListenAndServe(addr string) error {
 	serveMux := http.NewServeMux()
 	serveMux.HandleFunc("/proc", pl.handleProcsReq)
 	serveMux.HandleFunc("/proc/", pl.handleProcActionReq)
 	return http.ListenAndServe(addr, serveMux)
+}
+
+// ListenAndServe starts an HTTP server at the given address (localhost:80
+// by default, as results from the underlying net/http implementation).
+func ListenAndServe(addr string) error {
+	return DefaultProclist.ListenAndServe(addr)
 }
