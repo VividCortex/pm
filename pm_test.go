@@ -86,15 +86,16 @@ func TestProclist(t *testing.T) {
 		"method": "GET",
 		"uri":    "/hosts/1",
 		"host":   "localhost:15233",
+		"tmp":    "/tmp/sock",
 	}
 	attrs2 := map[string]interface{}{
 		"method": "PUT",
 		"uri":    "/hosts/2/config",
 		"host":   "localhost:12538",
 	}
-	Start("req1", &ProcOpts{ForbidCancel: true}, attrs1)
+	Start("req1", &ProcOpts{ForbidCancel: true}, &attrs1)
 	defer Done("req1")
-	Start("req2", &ProcOpts{StopCancelPanic: true}, attrs2)
+	Start("req2", &ProcOpts{StopCancelPanic: true}, &attrs2)
 
 	req1Status := []string{
 		"init",
@@ -105,6 +106,11 @@ func TestProclist(t *testing.T) {
 	for _, s := range req1Status[1:] {
 		Status("req1", s)
 	}
+
+	delete(attrs1, "tmp")
+	DelAttribute("req1", "tmp")
+	attrs2["database"] = "customers"
+	SetAttribute("req2", "database", "customers")
 
 	procs := DefaultProclist.getProcs()
 	if len(procs) != 2 {
@@ -136,7 +142,7 @@ func TestProclist(t *testing.T) {
 		t.Error("bad attribute set for req1")
 	}
 	if !attrMapEquals(attrMap(t, &p2), attrs2) {
-		t.Error("bad attribute set for req1")
+		t.Error("bad attribute set for req2")
 	}
 
 	func() {
@@ -279,7 +285,7 @@ func TestHttpServer(t *testing.T) {
 		procs[i].exitCh = make(chan struct{}, 1)
 
 		go func(i int) {
-			Start(procs[i].id, nil, map[string]interface{}{})
+			Start(procs[i].id, nil, nil)
 			defer Done(procs[i].id)
 			for _, s := range procs[i].status {
 				Status(procs[i].id, s)

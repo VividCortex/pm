@@ -24,7 +24,7 @@ that will get attached to the running task and be reported to the HTTP client
 tool as well. (Think of host, method and URI for a web server, for instance.)
 This could go like this:
 
-	pm.Start(requestID, nil, map[string]interface{}{
+	pm.Start(requestID, nil, &map[string]interface{}{
 		"host":   req.RemoteAddr,
 		"method": req.Method,
 		"uri":    req.RequestURI,
@@ -203,7 +203,7 @@ func (pl *Proclist) SetOptions(opts ProclistOpts) {
 // only be reused after the task previously using it is over. If process options
 // are not provided (nil), Start() will snapshot the global options for the
 // process list set by SetOptions().
-func (pl *Proclist) Start(id string, opts *ProcOpts, attrs map[string]interface{}) {
+func (pl *Proclist) Start(id string, opts *ProcOpts, attrs *map[string]interface{}) {
 	if opts == nil {
 		opts = &ProcOpts{
 			StopCancelPanic: pl.opts.StopCancelPanic,
@@ -211,9 +211,13 @@ func (pl *Proclist) Start(id string, opts *ProcOpts, attrs map[string]interface{
 		}
 	}
 	p := &proc{
-		id:    id,
-		attrs: attrs,
-		opts:  *opts,
+		id:   id,
+		opts: *opts,
+	}
+	if attrs != nil {
+		p.attrs = *attrs
+	} else {
+		p.attrs = make(map[string]interface{})
 	}
 	p.addHistoryEntry(time.Now(), "init")
 
@@ -223,6 +227,35 @@ func (pl *Proclist) Start(id string, opts *ProcOpts, attrs map[string]interface{
 	}
 	pl.procs[id] = p
 	pl.mu.Unlock()
+}
+
+// SetAttribute sets an application-specific attribute for the task given by id.
+// Unrecognized identifiers are silently skipped. Duplicate attribute names for
+// the task overwrite the previously set value.
+func (pl *Proclist) SetAttribute(id, name string, value interface{}) {
+	pl.mu.RLock()
+	p, present := pl.procs[id]
+	pl.mu.RUnlock()
+
+	if present {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		p.attrs[name] = value
+	}
+}
+
+// DelAttribute deletes an attribute for the task given by id. Unrecognized
+// task identifiers are silently skipped.
+func (pl *Proclist) DelAttribute(id, name string) {
+	pl.mu.RLock()
+	p, present := pl.procs[id]
+	pl.mu.RUnlock()
+
+	if present {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		delete(p.attrs, name)
+	}
 }
 
 // Type CancelErr is the type used for cancellation-induced panics.
@@ -392,8 +425,21 @@ func SetOptions(opts ProclistOpts) {
 // only be reused after the task previously using it is over. If process options
 // are not provided (nil), Start() will snapshot the global options for the
 // process list set by SetOptions().
-func Start(id string, opts *ProcOpts, attrs map[string]interface{}) {
+func Start(id string, opts *ProcOpts, attrs *map[string]interface{}) {
 	DefaultProclist.Start(id, opts, attrs)
+}
+
+// SetAttribute sets an application-specific attribute for the task given by id.
+// Unrecognized identifiers are silently skipped. Duplicate attribute names for
+// the task overwrite the previously set value.
+func SetAttribute(id, name string, value interface{}) {
+	DefaultProclist.SetAttribute(id, name, value)
+}
+
+// DelAttribute deletes an attribute for the task given by id. Unrecognized
+// task identifiers are silently skipped.
+func DelAttribute(id, name string) {
+	DefaultProclist.DelAttribute(id, name)
 }
 
 // Status changes the status for a task in the default Proclist, adding an item
