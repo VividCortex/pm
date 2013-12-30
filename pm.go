@@ -1,377 +1,474 @@
 // Copyright (c) 2013 VividCortex. Please see the LICENSE file for license terms.
 
 /*
-Package pm is a process manager with a TCP interface.
+Package pm is a process manager with an HTTP monitoring/control interface.
 
-A processlist is useful for inspecting and managing what's running in a
-program, such as an HTTP server or other server program. Processes within this
-program are user-defined tasks, such as an HTTP request.
+To this package, processes or tasks are user-defined routines within a running
+program. This model is particularly suitable to server programs, with
+independent client-generated requests for action. The library would keep track
+of all such tasks and make the information available through HTTP, thus
+providing valuable insight into the running application. The client can also ask
+for a particular task to be canceled.
 
-To use pm, you should make one call to SetCols() when you start your server
-running. This specifies the columns you want to see in printouts of the
-processlist. To continue the HTTP example:
+Using pm starts by calling ListenAndServe() in a separate routine, like so:
 
-	pm.SetCols("host", "method", "uri")
+	go pm.ListenAndServe(":8081")
 
-Follow this with a call to ListenAndServe():
+Note that pm's ListenAndServe() will not return by itself. Nevertheless, it will
+if the underlying net/http's ListenAndServe() does. So it's probably a good idea
+to wrap that call with some error checking and retrying for production code.
 
-	go func() {
-		for {
-			log.Println(pm.ListenAndServe(":8081"))
-			time.Sleep(time.Second)
-		}
-	}()
+Tasks to be tracked must be declared with Start(); that's when the identifier
+gets linked to them. An optional set of (arbitrary) attributes may be provided,
+that will get attached to the running task and be reported to the HTTP client
+tool as well. (Think of host, method and URI for a web server, for instance.)
+This could go like this:
 
-Then, when a process/task/request begins, you will call Start() with the
-process's ID and values for its columns, and defer a call to Done():
-
-	pm.Start(requestID, map[string]interface{}{
+	pm.Start(requestID, nil, &map[string]interface{}{
 		"host":   req.RemoteAddr,
 		"method": req.Method,
 		"uri":    req.RequestURI,
 	})
 	defer pm.Done(requestID)
 
-This is all you'll need to view a table of running requests and how long they've
-been executing. You can now connect to port 8081 and view the processlist with a
-tool such as netcat:
+Note the deferred pm.Done() call. That's essential to mark the task as finished
+and release resources, and has to be called no matter if the task succeeded or
+not. That's why it's a good idea to use Go's defer mechanism. In fact, the
+protection from cancel-related panics (see StopCancelPanic below) does NOT work
+if Done() is called in-line (i.e., not deferred) due to properties of recover().
 
-	$ nc localhost 8081
-	id     status    time  host             method  uri
-	proc1  init    0.0000  127.0.0.1:18364  GET     /users/
-	proc2  init    0.0001  127.0.0.1:3527   GET     /users/5/friends
+An HTTP client issuing a GET call to /procs/ would receive a JSON response with a
+snapshot of all currently running tasks. Each one will include the time when it
+was started (as per the server clock) as well as the complete set of attributes
+provided to Start(). Note that to avoid issues with clock skews among servers,
+the current time for the server is returned as well.
 
-If you add calls to pm.Status() throughout your code, you'll be able to see the
-status change, which can be helpful for troubleshooting:
+The reply to the /procs/ GET also includes a status. When tasks start they are
+set to "init", but they may change their status using pm's Status() function.
+Each call will record the change and the HTTP client will receive the last
+status available, together with the time it was set. Furthermore, the client may
+GET /procs/<id>/history instead (where <id> is the task identifier) to have a
+complete history for the given task, including all status changes with their
+time information. However, note that task information is completely recycled as
+soon as a task is Done(). Hence, client applications should be prepared to
+receive a not found reply even if they've just seen the task in a /procs/ GET
+result.
 
-	pm.Status(requestId, "authenticating")
+Given the lack of a statement in Go to kill a routine, cancellations are
+implemented as panics. A DELETE call to /procs/<id> will mark the task with the
+given identifier as cancel-pending. Nevertheless, the task will never notice
+until it reaches another Status() call, which is by definition a cancellation
+point. Calls to Status() either return having set the new status, or panic with
+an error of type CancelErr. Needless to say, the application should handle this
+gracefully or will otherwise crash. Programs serving multiple requests will
+probably be already protected, with a recover() call at the level where the
+routine was started. But if that's not the case, or if you simply want the panic
+to be handled transparently, you may use this:
 
-Status changes also serve as an opportunity to optionally make processes
-killable. If you execute the return value of calls to Status(), then you can
-introduce a runtime panic into that goroutine as desired, with a specified
-message:
+	pm.SetOptions(ProclistOptions{
+		StopCancelPanic: true
+	})
 
-	pm.Status(requestId, "authenticating")()
+When the StopCancelPanic option is set (which is NOT the default) Done() will
+recover a panic due to a cancel operation. In such a case, the routine running
+that code will jump to the next statement after the invocation to the function
+that called Start(). (Read it again.) In other words, stack unfolding stops at
+the level where Done() was deferred. Notice, though, that this behavior is
+specifically tailored to panics raising from pending cancellation requests.
+Should any other panic arise for any reason, it will continue past Done() as
+usual. So will panics due to cancel requests if StopCancelPanic is not set.
 
-The kill command and message can be specified through your netcat connection:
+Options set with pm.SetOptions() work on a global scope for the process list.
+Alternatively, you may provide a specific set for some task by using the options
+argument in the Start() call. If none is given, pm will grab the current global
+values at the time Start() was invoked. Task-specific options may come handy
+when, for instance, some tasks should be resilient to cancellation. Setting the
+ForbidCancel option makes the task effectively immune to cancel requests.
+Attempts by clients to cancel one of such tasks will inevitably yield an error
+message with no other effects. Set that with the global SetOptions() function
+and none of your tasks will cancel, ever.
 
-	kill proc2 houston, we have a problem
+HTTP clients can learn about pending cancellation requests. Furthermore, if a
+client request happens to be handled between the task is done/canceled and
+resource recycling (a VERY tiny time window), then the result would include one
+of these as the status: "killed", "aborted" or "ended", if it was respectively
+canceled, died out of another panic (not pm-related) or finished successfully.
+The "killed" status may optionally add a user-defined message, provided through
+the HTTP /procs/<id> DELETE method.
 
-This will cause a panic with a stacktrace such as the following:
+For the cancellation feature to be useful, applications should collaborate. Go
+lacks a mechanism to cancel arbitrary routines (it even lacks identifiers for
+them), so programs willing to provide the feature must be willing to help. It's
+a good practice to add cancellation points every once in a while, particularly
+when lengthy operations are run. However, applications are not expected to
+change status that frequently. This package provides the function CheckCancel()
+for that. It works as a cancellation point by definition, without messing with
+the task status, nor leaving a trace in history.
 
-	2013/11/17 15:39:29 http: panic serving 127.0.0.1:55780: process killed: "houston, we have a problem"
-	goroutine 6 [running]:
-	net/http.func·007()
-	    /usr/local/go/src/pkg/net/http/server.go:1022 +0xac
-	github.com/VividCortex/pm.func·001()
-	    /Users/baron/Documents/go/src/github.com/VividCortex/pm/pm.go:76 +0x4c
+Finally, please note that cancellation requests yield panics in the same routine
+that called Start() with that given identifier. However, it's not unusual for
+servers to spawn additional Go routines to handle the same request. The
+application is responsible of cleaning up, if there are additional resources
+that should be recycled. The proper way to do this is by catching CancelErr type
+panics, cleaning-up and then re-panic, i.e.:
 
-This is safe to do with HTTP servers based on net/http as long as the call to
-Status() isn't made from a separate goroutine. The goroutine that net/http
-starts to serve every incoming request has a deferred recover(), which will
-catch and print out such panics without causing the entire server process to
-die.
-
-In addition to killing processes, you can control the refresh rate through your
-netcat session with the "delay" command, which takes a single argument that is
-parsed by time.ParseDuration().
+	func handleRequest(requestId string) {
+		pm.Start(requestId, map[string]interface{}{})
+		defer pm.Done(requestId)
+		defer func() {
+			if e := recover(); e != nil {
+				if _, canceled := e.(CancelErr); canceled {
+					// do your cleanup here
+				}
+				panic(e) // re-panic with same error (cancel or not)
+			}
+		}()
+		// your application code goes here
+	}
 */
 package pm
 
 import (
-	"bytes"
+	"container/list"
 	"errors"
-	"fmt"
-	"io"
-	"net"
-	"strings"
 	"sync"
 	"time"
 )
 
-// Proclist represents a list of processes and the columns associated with them.
-// Most people will not use Proclist or its methods directly, but will instead use
-// the package-level functions that act on the default package-level variable.
+// Type Proclist is the main type for the process-list. You may have as many as
+// you wish, each with it's own HTTP server, but that's probably useful only in
+// a handful of cases. The typical use of this package is through the default
+// Proclist object (DefaultProclist) and package-level functions. The zero value
+// for the type is a Proclist ready to be used.
 type Proclist struct {
-	m     sync.Mutex
-	procs map[string]*Proc
-	lens  map[string]int // The column headers and their lengths, for aligning
-	cols  []string       // The following columns are reserved: id, status, time
+	mu    sync.RWMutex
+	procs map[string]*proc
+	opts  ProclistOpts
 }
 
-// SetCols sets the columns expected to be present for every process.
-// The id, status, and time columns are built-in.
-func (p *Proclist) SetCols(cols ...string) {
-	p.m.Lock()
-	defer p.m.Unlock()
-	p.cols = append([]string{"id", "status", "time"}, cols...)
-	for _, col := range p.cols {
-		if p.lens[col] < len(col) {
-			p.lens[col] = len(col)
-		}
-	}
+// Type ProclistOpts provides all options to be set for a Proclist. Options
+// shared with ProcOpts act as defaults in case no options are provided in a
+// task's call to Start().
+type ProclistOpts struct {
+	StopCancelPanic bool // Stop cancel-related panics at Done()
+	ForbidCancel    bool // Forbid cancellation requests
 }
 
-// Start creates and starts a new process. After this, the process's columns
-// do not change, with the exception of the status and time columns, which
-// are special.
-func (p *Proclist) Start(id string, cols map[string]interface{}) {
-	p.m.Lock()
-	defer p.m.Unlock()
-	p.procs[id] = &Proc{
-		profile: map[string]time.Duration{},
-		cols:    cols,
-		status:  "init",
-		start:   time.Now(),
-	}
-	for name, val := range cols {
-		l := len(fmt.Sprint(val))
-		if l > p.lens[name] {
-			p.lens[name] = l
-		}
-	}
-	if len(id) > p.lens["id"] {
-		p.lens["id"] = len(id)
-	}
-	p.lens["status"] = 6 // len("status")
+// Type ProcOpts provides options for the process.
+type ProcOpts struct {
+	StopCancelPanic bool // Stop cancel-related panics at Done()
+	ForbidCancel    bool // Forbid cancellation requests
 }
 
-// Done stops and removes a process from the list, and returns it.
-func (p *Proclist) Done(id string) *Proc {
-	p.m.Lock()
-	defer p.m.Unlock()
-	proc, present := p.procs[id]
-	if present {
-		delete(p.procs, id)
-		proc.Status("ended", time.Now())
+type proc struct {
+	mu      sync.RWMutex
+	id      string
+	attrs   map[string]interface{}
+	history list.List
+	cancel  struct {
+		isPending bool
+		message   string
 	}
-	return proc
+	opts ProcOpts
 }
 
-// Status changes a process's status. Use this to indicate what the process is
-// doing. Status() doubles as a status update and a check to see if the
-// process has been killed. The return value is a function that will kill the
-// process via a runtime panic, if so instructed with Kill(). The correct way
-// to use Status() is to execute the function it returns:
-//
-//    pm.Status("myproc", "authenticating")()
-//
-// If you don't include the trailing parens, then the process won't be
-// killable at this point in its execution.
-func (p *Proclist) Status(id, status string) func() {
-	p.m.Lock()
-	defer p.m.Unlock()
-	proc, present := p.procs[id]
-	if present {
-		proc.Status(status, time.Now())
-		if len(status) > p.lens["status"] {
-			p.lens["status"] = len(status)
-		}
-		if proc.kill != "" {
-			message := fmt.Sprintf("process killed: %q", proc.kill)
-			return func() { panic(message) }
-		}
-		return func() {}
-	}
-	return func() { panic("no such process " + id) }
+type historyEntry struct {
+	ts     time.Time
+	status string
 }
-
-// Kill schedules the process for killing at the next Status().
-func (p *Proclist) Kill(id, message string) error {
-	p.m.Lock()
-	defer p.m.Unlock()
-	if proc, present := p.procs[id]; present {
-		proc.kill = message
-		return nil
-	}
-	return ProcessNotFound
-}
-
-// Contents returns an io.Reader containing the formatted processlist.
-func (p *Proclist) Contents() io.Reader {
-	var (
-		b       bytes.Buffer
-		cols    = []interface{}{"id", "status", "time"}
-		formats = []string{
-			fmt.Sprintf("%%-%ds", p.lens["id"]),
-			fmt.Sprintf("%%-%ds", p.lens["status"]),
-			"%10.4f",
-		}
-		format string
-	)
-	p.m.Lock()
-	defer p.m.Unlock()
-
-	// Build the header and format, with the id/status/time cols at the left
-	for _, col := range p.cols {
-		if col != "id" && col != "status" && col != "time" {
-			cols = append(cols, col)
-			formats = append(formats, fmt.Sprintf("%%-%dv", p.lens[fmt.Sprint(col)]))
-		}
-	}
-	format = strings.Join(formats, "  ") + "\n"
-
-	// Write the header, then the rows
-	fmt.Fprintf(&b, strings.Replace(format, "%10.4f", "%10s", 1), cols...)
-	for id, proc := range p.procs {
-		var vars = []interface{}{id, proc.status, float64(time.Since(proc.start)) / float64(time.Second)}
-		for n, val := range proc.cols {
-			if n != "id" && n != "status" && n != "time" {
-				vars = append(vars, val)
-			}
-		}
-		fmt.Fprintf(&b, format, vars...)
-	}
-	return &b
-}
-
-// ListenAndServe() listens on a TCP socket. Connections to this socket get repeating
-// printouts of the processlist at 5-second intervals. Connections can send commands
-// as well. The command syntax is:
-//
-//    kill <id> <message>
-//       Schedules the specified process to be killed, with the given message.
-//    delay <duration>
-//       Changes the refresh interval. The argument is parsed with time.ParseDuration().
-func (p *Proclist) ListenAndServe(addr string) error {
-	l, err := net.Listen("tcp", addr)
-	if err != nil {
-		return err
-	}
-	for {
-		c, err := l.Accept()
-		if err != nil {
-			return err
-		}
-
-		// Start a command-listener on this connection.
-		go func() {
-			defer c.Close()
-			delay := time.Second * 3
-			go func() {
-				buf := make([]byte, 32*1024)
-				for {
-					n, err := c.Read(buf)
-					if n > 0 {
-						fields := strings.SplitN(strings.TrimSpace(string(buf[:n])), " ", 3)
-						switch fields[0] {
-						case "kill":
-							if len(fields) == 3 {
-								killErr := p.Kill(fields[1], fields[2])
-								if killErr != nil {
-									c.Write([]byte(ProcessNotFound.Error() + "\n"))
-								}
-							} else {
-								fmt.Fprint(c, "invalid command\n")
-							}
-						case "delay":
-							if len(fields) == 2 {
-								d, err := time.ParseDuration(fields[1])
-								if err != nil {
-									fmt.Fprintf(c, "invalid duration '%s'\n", fields[1])
-								} else {
-									delay = d
-								}
-							} else {
-								fmt.Fprint(c, "invalid command\n")
-							}
-						}
-					}
-					if err != nil { // If we were logging we'd log if ! io.EOF, but...
-						c.Close() // will cause the for-loop to close also
-						return
-					}
-				}
-			}()
-			for {
-				_, err := io.Copy(c, p.Contents())
-				if err != nil {
-					return // the conn will be closed by defer
-				}
-				time.Sleep(delay)
-			}
-		}()
-	}
-}
-
-// Proc represents a process.
-type Proc struct {
-	status, kill   string
-	start, updated time.Time
-	profile        map[string]time.Duration
-	cols           map[string]interface{}
-}
-
-// Status updates the process's status and keeps track of the time spent in each status.
-func (p *Proc) Status(status string, t time.Time) {
-	p.profile[p.status] = p.profile[p.status] + t.Sub(p.updated)
-	p.status = status
-	p.updated = t
-}
-
-var pl *Proclist // The default proclist
 
 var (
-	ProcessNotFound error = errors.New("no such process")
+	ErrForbidden     = errors.New("forbidden")
+	ErrNoSuchProcess = errors.New("no such process")
 )
 
-func init() {
-	pl = &Proclist{
-		procs: make(map[string]*Proc),
-		lens:  make(map[string]int),
+// Options returns the options set for this Proclist.
+func (pl *Proclist) Options() ProclistOpts {
+	pl.mu.RLock()
+	defer pl.mu.RUnlock()
+	return pl.opts
+}
+
+// SetOptions sets the options to be used for this Proclist.
+func (pl *Proclist) SetOptions(opts ProclistOpts) {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	pl.opts = opts
+}
+
+// Start marks the beginning of a task at this Proclist. All attributes are
+// recorded but not handled internally by the package. They will be mapped to
+// JSON and provided to HTTP clients for this task. It's the caller's
+// responsibility to provide different identifiers for separate tasks. An id can
+// only be reused after the task previously using it is over. If process options
+// are not provided (nil), Start() will snapshot the global options for the
+// process list set by SetOptions().
+func (pl *Proclist) Start(id string, opts *ProcOpts, attrs *map[string]interface{}) {
+	if opts == nil {
+		opts = &ProcOpts{
+			StopCancelPanic: pl.opts.StopCancelPanic,
+			ForbidCancel:    pl.opts.ForbidCancel,
+		}
+	}
+	p := &proc{
+		id:   id,
+		opts: *opts,
+	}
+	if attrs != nil {
+		p.attrs = *attrs
+	} else {
+		p.attrs = make(map[string]interface{})
+	}
+	p.addHistoryEntry(time.Now(), "init")
+
+	pl.mu.Lock()
+	if pl.procs == nil {
+		pl.procs = make(map[string]*proc)
+	}
+	pl.procs[id] = p
+	pl.mu.Unlock()
+}
+
+// SetAttribute sets an application-specific attribute for the task given by id.
+// Unrecognized identifiers are silently skipped. Duplicate attribute names for
+// the task overwrite the previously set value.
+func (pl *Proclist) SetAttribute(id, name string, value interface{}) {
+	pl.mu.RLock()
+	p, present := pl.procs[id]
+	pl.mu.RUnlock()
+
+	if present {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		p.attrs[name] = value
 	}
 }
 
-// SetCols sets the columns expected to be present for every process.
-// The id, status, and time columns are built-in.
-func SetCols(cols ...string) {
-	pl.SetCols(cols...)
+// DelAttribute deletes an attribute for the task given by id. Unrecognized
+// task identifiers are silently skipped.
+func (pl *Proclist) DelAttribute(id, name string) {
+	pl.mu.RLock()
+	p, present := pl.procs[id]
+	pl.mu.RUnlock()
+
+	if present {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		delete(p.attrs, name)
+	}
 }
 
-// Start creates and starts a new process. After this, the process's columns
-// do not change, with the exception of the status and time columns, which
-// are special.
-func Start(id string, cols map[string]interface{}) {
-	pl.Start(id, cols)
+// Type CancelErr is the type used for cancellation-induced panics.
+type CancelErr string
+
+// Error returns the error message for a CancelErr.
+func (e CancelErr) Error() string {
+	return string(e)
 }
 
-// Done stops and removes a process from the list, and returns it.
-func Done(id string) *Proc {
-	return pl.Done(id)
+func (p *proc) doCancel() {
+	message := "killed"
+	if len(p.cancel.message) > 0 {
+		message += ": " + p.cancel.message
+	}
+
+	panic(CancelErr(message))
 }
 
-// Status changes a process's status. Use this to indicate what the process is
-// doing. Status() doubles as a status update and a check to see if the
-// process has been killed. The return value is a function that will kill the
-// process via a runtime panic, if so instructed with Kill(). The correct way
-// to use Status() is to execute the function it returns:
-//
-//    pm.Status("myproc", "authenticating")()
-//
-// If you don't include the trailing parens, then the process won't be
-// killable at this point in its execution.
-func Status(id, status string) func() {
-	return pl.Status(id, status)
+// addHistoryEntry pushes a new entry to the processes' history, assuming the
+// lock is already held.
+func (p *proc) addHistoryEntry(ts time.Time, status string) {
+	p.history.PushBack(&historyEntry{
+		ts:     ts,
+		status: status,
+	})
 }
 
-// Kill schedules the process for killing at the next Status().
+// Status changes the status for a task in a Proclist, adding an item to the
+// task's history. Note that Status() is a cancellation point, thus the routine
+// calling it is subject to a panic due to a pending Kill().
+func (pl *Proclist) Status(id, status string) {
+	ts := time.Now()
+	pl.mu.RLock()
+	p, present := pl.procs[id]
+	pl.mu.RUnlock()
+
+	if present {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		p.addHistoryEntry(ts, status)
+
+		if p.cancel.isPending {
+			p.doCancel()
+		}
+	}
+}
+
+// CheckCancel introduces a cancellation point just like Status() does, but
+// without changing the task status, nor adding an entry to history.
+func (pl *Proclist) CheckCancel(id string) {
+	pl.mu.RLock()
+	p, present := pl.procs[id]
+	pl.mu.RUnlock()
+
+	if present {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
+		if p.cancel.isPending {
+			p.doCancel()
+		}
+	}
+}
+
+// Kill sets a cancellation request to the task with the given identifier, that
+// will be effective as soon as the routine running that task hits a
+// cancellation point. The (optional) message will be included in the CancelErr
+// object used for panic.
+func (pl *Proclist) Kill(id, message string) error {
+	ts := time.Now()
+	pl.mu.RLock()
+	p, present := pl.procs[id]
+	pl.mu.RUnlock()
+
+	if !present {
+		return ErrNoSuchProcess
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.opts.ForbidCancel {
+		return ErrForbidden
+	}
+	if !p.cancel.isPending {
+		p.cancel.isPending = true
+		p.cancel.message = message
+
+		var hentry string
+		if len(message) > 0 {
+			hentry = "[cancel request: " + message + "]"
+		} else {
+			hentry = "[cancel request]"
+		}
+		p.addHistoryEntry(ts, hentry)
+	}
+	return nil
+}
+
+// done marks the end of a process, registering it depending on the outcome.
+// Parameter e is supposed to be the result of recover(), so that we know
+// whether processing ended normally, was canceled or aborted due to any other
+// panic.
+func (pl *Proclist) done(id string, e interface{}) {
+	pl.mu.Lock()
+	p, present := pl.procs[id]
+	if present {
+		delete(pl.procs, id)
+	}
+	stopPanic := pl.opts.StopCancelPanic
+	pl.mu.Unlock()
+
+	if present {
+		ts := time.Now()
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
+		if e != nil {
+			if msg, canceled := e.(CancelErr); canceled {
+				p.addHistoryEntry(ts, string(msg))
+				if !p.opts.StopCancelPanic {
+					panic(e)
+				}
+			} else {
+				p.addHistoryEntry(ts, "aborted")
+				panic(e)
+			}
+		} else {
+			p.addHistoryEntry(ts, "ended")
+		}
+	} else if e != nil {
+		_, canceled := e.(CancelErr)
+		if !canceled || !stopPanic {
+			panic(e)
+		}
+	}
+}
+
+// Done marks the end of a task, writing in history depending on the outcome
+// (i.e., aborted, killed or finished successfully). This function releases
+// resources associated with the process, thus making the id available for use
+// by another task. It also stops panics raising from cancellation requests, but
+// only when the StopCancelPanic option is set AND Done is called with a defer
+// statement.
+func (pl *Proclist) Done(id string) {
+	pl.done(id, recover())
+}
+
+// This is the default Proclist set for the package. Package-level operations
+// use this list.
+var DefaultProclist Proclist
+
+// Options returns the options set for the default Proclist.
+func Options() ProclistOpts {
+	return DefaultProclist.Options()
+}
+
+// SetOptions sets the options to be used for this Proclist.
+func SetOptions(opts ProclistOpts) {
+	DefaultProclist.SetOptions(opts)
+}
+
+// Start marks the beginning of a task at the default Proclist. All attributes
+// are recorded but not handled internally by the package. They will be mapped
+// to JSON and provided to HTTP clients for this task. It's the caller's
+// responsibility to provide different identifiers for separate tasks. An id can
+// only be reused after the task previously using it is over. If process options
+// are not provided (nil), Start() will snapshot the global options for the
+// process list set by SetOptions().
+func Start(id string, opts *ProcOpts, attrs *map[string]interface{}) {
+	DefaultProclist.Start(id, opts, attrs)
+}
+
+// SetAttribute sets an application-specific attribute for the task given by id.
+// Unrecognized identifiers are silently skipped. Duplicate attribute names for
+// the task overwrite the previously set value.
+func SetAttribute(id, name string, value interface{}) {
+	DefaultProclist.SetAttribute(id, name, value)
+}
+
+// DelAttribute deletes an attribute for the task given by id. Unrecognized
+// task identifiers are silently skipped.
+func DelAttribute(id, name string) {
+	DefaultProclist.DelAttribute(id, name)
+}
+
+// Status changes the status for a task in the default Proclist, adding an item
+// to the task's history. Note that Status() is a cancellation point, thus the
+// routine calling it is subject to a panic due to a pending Kill().
+func Status(id, status string) {
+	DefaultProclist.Status(id, status)
+}
+
+// CheckCancel introduces a cancellation point just like Status() does, but
+// without changing the task status, nor adding an entry to history.
+func CheckCancel(id string) {
+	DefaultProclist.CheckCancel(id)
+}
+
+// Kill sets a cancellation request to the task with the given identifier, that
+// will be effective as soon as the routine running that task hits a
+// cancellation point. The (optional) message will be included in the CancelErr
+// object used for panic.
 func Kill(id, message string) error {
-	return pl.Kill(id, message)
+	return DefaultProclist.Kill(id, message)
 }
 
-// Contents returns an io.Reader containing the formatted processlist.
-func Contents() io.Reader {
-	return pl.Contents()
-}
-
-// ListenAndServe() listens on a TCP socket. Connections to this socket get repeating
-// printouts of the processlist at 5-second intervals. Connections can send commands
-// as well. The command syntax is:
-//
-//    kill <id> <message>
-//       Schedules the specified process to be killed, with the given message.
-//    delay <duration>
-//       Changes the refresh interval. The argument is parsed with time.ParseDuration().
-func ListenAndServe(addr string) error {
-	return pl.ListenAndServe(addr)
+// Done marks the end of a task, writing to history depending on the outcome
+// (i.e., aborted, killed or finished successfully). This function releases
+// resources associated with the process, thus making the id available for use
+// by another task. It also stops panics raising from cancellation requests, but
+// only when the StopCancelPanic option is set AND Done is called with a defer
+// statement.
+func Done(id string) {
+	DefaultProclist.done(id, recover())
 }

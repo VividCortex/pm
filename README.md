@@ -3,94 +3,90 @@ pm
 
 ![build status](https://circleci.com/gh/VividCortex/pm.png?circle-token=d37ec652ea117165cd1b342400a801438f575209)
 
-pm is a process manager with a TCP interface. We plan to use it at
+pm is a process manager with an HTTP interface. We use it at
 [VividCortex](https://vividcortex.com/) to inspect and manage API server
 programs. It replaces an internal-only project that was similar.
 
 pm is in beta and will change rapidly. Please see the issues list for what's
 planned, or to suggest changes.
 
-A processlist is useful for inspecting and managing what's running in a
+A Processlist is useful for inspecting and managing what's running in a
 program, such as an HTTP server or other server program. Processes within this
 program are user-defined tasks, such as HTTP requests.
 
 Documentation
 =============
 
-Please read the generated [package documentation](http://godoc.org/github.com/VividCortex/pm).
+Please read the generated package documentation for both
+[server](http://godoc.org/github.com/VividCortex/pm) and
+[client](http://godoc.org/github.com/VividCortex/pm/client).
 
 Getting Started
 ===============
 
-To use pm, you should make one call to SetCols() when you start your server
-running. This specifies the columns you want to see in printouts of the
-processlist. To continue the HTTP example:
+Package pm is a process manager with an HTTP monitoring/control interface.
 
-	pm.SetCols("host", "method", "uri")
+Processes or tasks are user-defined routines within a running Go program. Think
+of the routines handling client requests in a web server, for instance. This
+package is designed to keep track of them, making information available through
+an HTTP interface. Client tools connecting to the later can thus monitor active
+tasks, having access to the full status history with timing data. Also,
+application-specific attributes may be attached to tasks (method/URI for the web
+server case, for example), that will be integrated with status/timing
+information.
 
-Follow this with a call to ListenAndServe():
 
-	go func() {
-		for {
-			log.Println(pm.ListenAndServe(":8081"))
-			time.Sleep(time.Second)
-		}
-	}()
+Using pm starts by opening a server port to handle requests for task information
+through HTTP. That goes like this (although you probably want to add error
+checking/handling code):
 
-Then, when a process/task/request begins, you will call Start() with the
-process's ID and values for its columns, and defer a call to Done():
+```go
+go pm.ListenAndServe(":8081")
+```
 
-	pm.Start(requestID, map[string]interface{}{
-		"host":   req.RemoteAddr,
-		"method": req.Method,
-		"uri":    req.RequestURI,
-	})
-	defer pm.Done(requestID)
+Processes to be tracked must call `Start()` with a process identifier and,
+optionally, a set of attributes. Even though the id is arbitrary, it's up to the
+application to choose one not in use by any other running task. A deferred call
+to `Done()` with the same id should follow:
 
-This is all you'll need to view a table of running requests and how long they've
-been executing. You can now connect to port 8081 and view the processlist with a
-tool such as netcat:
+```go
+pm.Start(requestID, nil, map[string]interface{}{
+	"host":   req.RemoteAddr,
+	"method": req.Method,
+	"uri":    req.RequestURI,
+})
+defer pm.Done(requestID)
+```
 
-	$ nc localhost 8081
-	id     status    time  host             method  uri
-	proc1  init    0.0000  127.0.0.1:18364  GET     /users/
-	proc2  init    0.0001  127.0.0.1:55780  GET     /users/5/friends
+Finally, each task can change its status as often as required with a `Status()`
+call. Status strings are completely arbitrary and never inspected by the
+package. Now you're all set to try something like this:
 
-If you add calls to pm.Status() throughout your code, you'll be able to see the
-status change, which can be helpful for troubleshooting:
+```
+curl http://localhost:8081/procs/
+curl http://localhost:8081/procs/<id>/history
+```
 
-	pm.Status(requestId, "authenticating")
+where `<id>` stands for an actual process id in your application. You'll get
+JSON responses including, respectively, the set of processes currently running
+and the full history for your chosen id.
 
-Status changes also serve as an opportunity to optionally make processes
-killable. If you execute the return value of calls to Status(), then you can
-introduce a runtime panic into that goroutine as desired, with a specified
-message:
+Tasks can also be cancelled from the HTTP interface. In order to do that, you
+should call the DELETE method on `/procs/<id>`. Given the lack of support in Go
+to cancel a running routine, cancellation requests are implemented in this
+package as panics. Please refer to the full package documentation to learn how
+to properly deal with this. If you're **not** interested in this feature, you
+can disable cancellation completely by running the following *before* you
+`Start()` any task:
 
-	pm.Status(requestId, "authenticating")()
+```go
+pm.SetOptions(ProclistOptions{
+	ForbidCancel: true
+})
+```
 
-The kill command and message can be specified through your netcat connection:
-
-	kill proc2 houston, we have a problem
-
-This will cause a panic with a stacktrace such as the following:
-
-	2013/11/17 15:39:29 http: panic serving 127.0.0.1:55780:
-		process killed: "houston, we have a problem"
-	goroutine 6 [running]:
-	net/http.func·007()
-	    /usr/local/go/src/pkg/net/http/server.go:1022 +0xac
-	github.com/VividCortex/pm.func·001()
-	    github.com/VividCortex/pm/pm.go:76 +0x4c
-
-This is safe to do with HTTP servers based on net/http as long as the call to
-Status() isn't made from a separate goroutine. The goroutine that net/http
-starts to serve every incoming request has a deferred recover(), which will
-catch and print out such panics without causing the entire server process to
-die.
-
-In addition to killing processes, you can control the refresh rate through your
-netcat session with the "delay" command, which takes a single argument that is
-parsed by time.ParseDuration().
+See package `pm/client` for an HTTP client implementation you can readily use
+from Go applications.
 
 Contributing
 ============
