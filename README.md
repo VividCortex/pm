@@ -1,7 +1,7 @@
 pm
 ==
 
-![build status](https://circleci.com/gh/VividCortex/pm.png?circle-token=d37ec652ea117165cd1b342400a801438f575209)
+![build status](https://circleci.com/gh/VividCortex/pm.png?circle-token=f30450460e330fd0e9253c899c6a379e085989e7)
 
 pm is a process manager with an HTTP interface. We use it at
 [VividCortex](https://vividcortex.com/) to inspect and manage API server
