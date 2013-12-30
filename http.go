@@ -26,15 +26,15 @@ func (pl *Proclist) getProcs() []ProcDetail {
 				Value: value,
 			})
 		}
-		firstJEntry := p.journal.Front().Value.(*journalEntry)
-		lastJEntry := p.journal.Back().Value.(*journalEntry)
+		firstHEntry := p.history.Front().Value.(*historyEntry)
+		lastHEntry := p.history.Back().Value.(*historyEntry)
 
 		procs = append(procs, ProcDetail{
 			Id:         id,
 			Attrs:      attrs,
-			ProcTm:     firstJEntry.ts,
-			StatusTm:   lastJEntry.ts,
-			Status:     lastJEntry.status,
+			ProcTime:   firstHEntry.ts,
+			StatusTime: lastHEntry.ts,
+			Status:     lastHEntry.status,
 			Cancelling: p.cancel.isPending,
 		})
 		p.mu.RUnlock()
@@ -47,15 +47,10 @@ func httpError(w http.ResponseWriter, httpCode int) {
 	http.Error(w, http.StatusText(httpCode), httpCode)
 }
 
-func (pl *Proclist) handleProcsReq(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		httpError(w, http.StatusMethodNotAllowed)
-		return
-	}
-
+func (pl *Proclist) handleProclistReq(w http.ResponseWriter, r *http.Request) {
 	b, err := json.Marshal(ProcResponse{
-		Procs:    pl.getProcs(),
-		ServerTm: time.Now(),
+		Procs:      pl.getProcs(),
+		ServerTime: time.Now(),
 	})
 	if err != nil {
 		httpError(w, http.StatusInternalServerError)
@@ -65,41 +60,40 @@ func (pl *Proclist) handleProcsReq(w http.ResponseWriter, r *http.Request) {
 	w.Write(b)
 }
 
-func (pl *Proclist) getJournal(id string) []JournalDetail {
+func (pl *Proclist) getHistory(id string) ([]HistoryDetail, error) {
 	pl.mu.RLock()
 	p, present := pl.procs[id]
 	pl.mu.RUnlock()
 
 	if !present {
-		return []JournalDetail{}
+		return []HistoryDetail{}, ErrNoSuchProcess
 	}
 
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	journal := make([]JournalDetail, 0, p.journal.Len())
+	history := make([]HistoryDetail, 0, p.history.Len())
 
-	entry := p.journal.Front()
+	entry := p.history.Front()
 	for entry != nil {
-		v := entry.Value.(*journalEntry)
-		journal = append(journal, JournalDetail{
+		v := entry.Value.(*historyEntry)
+		history = append(history, HistoryDetail{
 			Ts:     v.ts,
 			Status: v.status,
 		})
 		entry = entry.Next()
 	}
 
-	return journal
+	return history, nil
 }
 
-func (pl *Proclist) handleJournalReq(w http.ResponseWriter, r *http.Request, id string) {
-	if r.Method != "GET" {
-		httpError(w, http.StatusMethodNotAllowed)
-		return
+func (pl *Proclist) handleHistoryReq(w http.ResponseWriter, r *http.Request, id string) {
+	history, err := pl.getHistory(id)
+	if err != nil {
+		httpError(w, http.StatusNotFound)
 	}
-
-	b, err := json.Marshal(JournalResponse{
-		Journal:  pl.getJournal(id),
-		ServerTm: time.Now(),
+	b, err := json.Marshal(HistoryResponse{
+		History:    history,
+		ServerTime: time.Now(),
 	})
 	if err != nil {
 		httpError(w, http.StatusInternalServerError)
@@ -110,38 +104,59 @@ func (pl *Proclist) handleJournalReq(w http.ResponseWriter, r *http.Request, id 
 }
 
 func (pl *Proclist) handleCancelReq(w http.ResponseWriter, r *http.Request, id string) {
-	if r.Method != "PUT" {
-		httpError(w, http.StatusMethodNotAllowed)
-		return
-	}
-
 	var message string
 	var cancel CancelRequest
 	if err := json.NewDecoder(r.Body).Decode(&cancel); err == nil {
 		message = cancel.Message
 	}
-	pl.Kill(id, message)
-	w.WriteHeader(http.StatusOK)
+	if err := pl.Kill(id, message); err != nil {
+		httpCode := http.StatusNotFound
+		if err == ErrForbidden {
+			httpCode = http.StatusForbidden
+		}
+		httpError(w, httpCode)
+	}
 }
 
-func (pl *Proclist) handleProcActionReq(w http.ResponseWriter, r *http.Request) {
-	// We registered this handle for "/proc/"; splitting by the slash
-	// yields the id as the third component
-	pathItems := strings.Split(r.URL.Path, "/")
-	id := pathItems[2]
-	if len(pathItems) != 4 || len(id) == 0 {
-		httpError(w, http.StatusNotFound)
+func (pl *Proclist) handleProcsReq(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+	if path == "/procs/" {
+		if r.Method == "GET" {
+			pl.handleProclistReq(w, r)
+		} else {
+			httpError(w, http.StatusMethodNotAllowed)
+		}
 		return
 	}
 
-	switch pathItems[3] {
-	case "journal":
-		pl.handleJournalReq(w, r, id)
-	case "cancel":
-		pl.handleCancelReq(w, r, id)
-	default:
+	// Path should start with "/procs/<id>"
+	subdir := path[len("/procs/"):]
+	sep := strings.Index(subdir, "/")
+	if sep < 0 {
+		sep = len(subdir)
+	}
+	if sep == 0 {
 		httpError(w, http.StatusNotFound)
 		return
+	}
+	id := subdir[:sep]
+	subdir = subdir[sep:]
+
+	switch {
+	case subdir == "" || subdir == "/":
+		if r.Method == "DELETE" {
+			pl.handleCancelReq(w, r, id)
+		} else {
+			httpError(w, http.StatusMethodNotAllowed)
+		}
+	case subdir == "/history":
+		if r.Method == "GET" {
+			pl.handleHistoryReq(w, r, id)
+		} else {
+			httpError(w, http.StatusMethodNotAllowed)
+		}
+	default:
+		httpError(w, http.StatusNotFound)
 	}
 }
 
@@ -149,8 +164,7 @@ func (pl *Proclist) handleProcActionReq(w http.ResponseWriter, r *http.Request) 
 // by default, as results from the underlying net/http implementation).
 func (pl *Proclist) ListenAndServe(addr string) error {
 	serveMux := http.NewServeMux()
-	serveMux.HandleFunc("/proc", pl.handleProcsReq)
-	serveMux.HandleFunc("/proc/", pl.handleProcActionReq)
+	serveMux.HandleFunc("/procs/", pl.handleProcsReq)
 	return http.ListenAndServe(addr, serveMux)
 }
 

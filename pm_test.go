@@ -68,15 +68,15 @@ func checkProcResponse(t *testing.T, reply, expected *ProcResponse) {
 	}
 }
 
-func checkJournalResponse(t *testing.T, reply, expected *JournalResponse) {
-	if len(reply.Journal) != len(expected.Journal) {
-		t.Fatalf("bad journal length; expected %d, received %d",
-			len(expected.Journal), len(reply.Journal))
+func checkHistoryResponse(t *testing.T, reply, expected *HistoryResponse) {
+	if len(reply.History) != len(expected.History) {
+		t.Fatalf("bad history length; expected %d, received %d",
+			len(expected.History), len(reply.History))
 	}
 
-	for i := range reply.Journal {
-		if reply.Journal[i].Status != expected.Journal[i].Status {
-			t.Fatal("bad journal received")
+	for i := range reply.History {
+		if reply.History[i].Status != expected.History[i].Status {
+			t.Fatal("bad history received")
 		}
 	}
 }
@@ -92,8 +92,9 @@ func TestProclist(t *testing.T) {
 		"uri":    "/hosts/2/config",
 		"host":   "localhost:12538",
 	}
-	Start("req1", attrs1)
-	Start("req2", attrs2)
+	Start("req1", &ProcOpts{ForbidCancel: true}, attrs1)
+	defer Done("req1")
+	Start("req2", &ProcOpts{StopCancelPanic: true}, attrs2)
 
 	req1Status := []string{
 		"init",
@@ -140,14 +141,31 @@ func TestProclist(t *testing.T) {
 
 	func() {
 		defer Done("req2")
-		SetOptions(ProclistOpts{StopCancelPanic: true})
-
 		Kill("req2", "")
 		Status("req2", "searching")
 		t.Error("req2 was not cancelled when it had to")
 	}()
 
-	for i, item := range DefaultProclist.getJournal("req1") {
+	func() {
+		defer func() {
+			if e := recover(); e != nil {
+				if _, ok := e.(CancelErr); ok {
+					t.Fatal("req2 was incorrectly cancelled")
+				} else {
+					panic(e)
+				}
+			}
+		}()
+
+		Kill("req1", "")
+		CheckCancel("req1")
+	}()
+
+	history, err := DefaultProclist.getHistory("req1")
+	if err != nil {
+		t.Fatal("unable to retrieve history")
+	}
+	for i, item := range history {
 		if item.Status != req1Status[i] {
 			t.Error("bad status at position %d; got %s, expected %s",
 				i, item.Status, req1Status[i])
@@ -204,15 +222,15 @@ func (c *Client) makeRequest(verb, endpoint string, body, result interface{}) er
 
 func (c *Client) getProcs(t *testing.T) *ProcResponse {
 	var result ProcResponse
-	if err := c.makeRequest("GET", "/proc", nil, &result); err != nil {
+	if err := c.makeRequest("GET", "/procs/", nil, &result); err != nil {
 		t.Fatal(err)
 	}
 	return &result
 }
 
-func (c *Client) getJournal(t *testing.T, id string) *JournalResponse {
-	var result JournalResponse
-	endpoint := fmt.Sprintf("/proc/%s/journal", id)
+func (c *Client) getHistory(t *testing.T, id string) *HistoryResponse {
+	var result HistoryResponse
+	endpoint := fmt.Sprintf("/procs/%s/history", id)
 
 	if err := c.makeRequest("GET", endpoint, nil, &result); err != nil {
 		t.Fatal(err)
@@ -222,9 +240,9 @@ func (c *Client) getJournal(t *testing.T, id string) *JournalResponse {
 
 func (c *Client) kill(t *testing.T, id, message string) {
 	body := CancelRequest{Message: message}
-	endpoint := fmt.Sprintf("/proc/%s/cancel", id)
+	endpoint := fmt.Sprintf("/procs/%s", id)
 
-	if err := c.makeRequest("PUT", endpoint, body, nil); err != nil {
+	if err := c.makeRequest("DELETE", endpoint, body, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -261,7 +279,7 @@ func TestHttpServer(t *testing.T) {
 		procs[i].exitCh = make(chan struct{}, 1)
 
 		go func(i int) {
-			Start(procs[i].id, map[string]interface{}{})
+			Start(procs[i].id, nil, map[string]interface{}{})
 			defer Done(procs[i].id)
 			for _, s := range procs[i].status {
 				Status(procs[i].id, s)
@@ -305,23 +323,23 @@ func TestHttpServer(t *testing.T) {
 		},
 	})
 
-	checkJournalResponse(t, c.getJournal(t, "req1"), &JournalResponse{
-		Journal: []JournalDetail{
-			JournalDetail{Status: "init"},
-			JournalDetail{Status: "S11"},
-			JournalDetail{Status: "S12"},
-			JournalDetail{Status: "S13"},
+	checkHistoryResponse(t, c.getHistory(t, "req1"), &HistoryResponse{
+		History: []HistoryDetail{
+			HistoryDetail{Status: "init"},
+			HistoryDetail{Status: "S11"},
+			HistoryDetail{Status: "S12"},
+			HistoryDetail{Status: "S13"},
 		},
 	})
 
 	c.kill(t, "req1", "my message")
-	checkJournalResponse(t, c.getJournal(t, "req1"), &JournalResponse{
-		Journal: []JournalDetail{
-			JournalDetail{Status: "init"},
-			JournalDetail{Status: "S11"},
-			JournalDetail{Status: "S12"},
-			JournalDetail{Status: "S13"},
-			JournalDetail{Status: "[cancel request: my message]"},
+	checkHistoryResponse(t, c.getHistory(t, "req1"), &HistoryResponse{
+		History: []HistoryDetail{
+			HistoryDetail{Status: "init"},
+			HistoryDetail{Status: "S11"},
+			HistoryDetail{Status: "S12"},
+			HistoryDetail{Status: "S13"},
+			HistoryDetail{Status: "[cancel request: my message]"},
 		},
 	})
 

@@ -67,17 +67,17 @@ func (c *Client) makeRequest(verb, endpoint string, body, result interface{}) er
 // the server. The result is provided as a ProcResponse.
 func (c *Client) Processes() (*pm.ProcResponse, error) {
 	var result pm.ProcResponse
-	if err := c.makeRequest("GET", "/proc", nil, &result); err != nil {
+	if err := c.makeRequest("GET", "/procs/", nil, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
 }
 
-// Journal issues a GET to /proc/<id>/journal for a given id, thus returning the
+// History issues a GET to /proc/<id>/history for a given id, thus returning the
 // complete history for the task <id> at the server.
-func (c *Client) Journal(id string) (*pm.JournalResponse, error) {
-	var result pm.JournalResponse
-	endpoint := fmt.Sprintf("/proc/%s/journal", id)
+func (c *Client) History(id string) (*pm.HistoryResponse, error) {
+	var result pm.HistoryResponse
+	endpoint := fmt.Sprintf("/procs/%s/history", id)
 
 	if err := c.makeRequest("GET", endpoint, nil, &result); err != nil {
 		return nil, err
@@ -89,9 +89,9 @@ func (c *Client) Journal(id string) (*pm.JournalResponse, error) {
 // be cancelled as soon as the task reaches its next cancellation point.
 func (c *Client) Kill(id, message string) error {
 	body := pm.CancelRequest{Message: message}
-	endpoint := fmt.Sprintf("/proc/%s/cancel", id)
+	endpoint := fmt.Sprintf("/procs/%s", id)
 
-	if err := c.makeRequest("PUT", endpoint, body, nil); err != nil {
+	if err := c.makeRequest("DELETE", endpoint, body, nil); err != nil {
 		return err
 	}
 	return nil

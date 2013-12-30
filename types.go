@@ -15,28 +15,28 @@ type AttrDetail struct {
 type ProcDetail struct {
 	Id         string       `json:"id"`
 	Attrs      []AttrDetail `json:"attrs,omitempty"`
-	ProcTm     time.Time    `json:"proctm"`
-	StatusTm   time.Time    `json:"statustm"`
+	ProcTime   time.Time    `json:"procTime"`
+	StatusTime time.Time    `json:"statusTime"`
 	Status     string       `json:"status"`
 	Cancelling bool         `json:"cancelling,omitempty"`
 }
 
 // ProcResponse is the response for a GET to /proc.
 type ProcResponse struct {
-	Procs    []ProcDetail `json:"procs"`
-	ServerTm time.Time    `json:"servertm"`
+	Procs      []ProcDetail `json:"procs"`
+	ServerTime time.Time    `json:"serverTime"`
 }
 
-// JournalDetail encodes one entry from the process' journal.
-type JournalDetail struct {
+// HistoryDetail encodes one entry from the process' history.
+type HistoryDetail struct {
 	Ts     time.Time `json:"ts"`
 	Status string    `json:"status"`
 }
 
-// JournalResponse is the response for a GET to /proc/<id>/journal.
-type JournalResponse struct {
-	Journal  []JournalDetail `json:"journal"`
-	ServerTm time.Time       `json:"servertm"`
+// HistoryResponse is the response for a GET to /proc/<id>/history.
+type HistoryResponse struct {
+	History    []HistoryDetail `json:"history"`
+	ServerTime time.Time       `json:"serverTime"`
 }
 
 // CancelRequest is the request body resulting from Kill().
