@@ -141,9 +141,10 @@ import (
 // Proclist object (DefaultProclist) and package-level functions. The zero value
 // for the type is a Proclist ready to be used.
 type Proclist struct {
-	mu    sync.RWMutex
-	procs map[string]*proc
-	opts  ProclistOpts
+	mu      sync.RWMutex
+	procs   map[string]*proc
+	opts    ProclistOpts
+	Headers map[string]string // Headers for the HTTP server
 }
 
 // Type ProclistOpts provides all options to be set for a Proclist. Options
