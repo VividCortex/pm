@@ -149,7 +149,7 @@ func (pl *Proclist) handleProcsReq(w http.ResponseWriter, r *http.Request) {
 		} else if r.Method == "OPTIONS" {
 			httpError(w, http.StatusOK)
 		} else {
-			httpError(w, http.StatusOK)
+			httpError(w, http.StatusMethodNotAllowed)
 		}
 	case subdir == "/history":
 		if r.Method == "GET" {
