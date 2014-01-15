@@ -146,6 +146,8 @@ func (pl *Proclist) handleProcsReq(w http.ResponseWriter, r *http.Request) {
 	case subdir == "" || subdir == "/":
 		if r.Method == "DELETE" {
 			pl.handleCancelReq(w, r, id)
+		} else if r.Method == "OPTIONS" {
+			httpError(w, http.StatusOK)
 		} else {
 			httpError(w, http.StatusMethodNotAllowed)
 		}
