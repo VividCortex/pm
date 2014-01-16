@@ -150,8 +150,9 @@ type Proclist struct {
 // shared with ProcOpts act as defaults in case no options are provided in a
 // task's call to Start().
 type ProclistOpts struct {
-	StopCancelPanic bool // Stop cancel-related panics at Done()
-	ForbidCancel    bool // Forbid cancellation requests
+	StopCancelPanic bool              // Stop cancel-related panics at Done()
+	ForbidCancel    bool              // Forbid cancellation requests
+	HttpHeaders     map[string]string // Headers for the HTTP server
 }
 
 // Type ProcOpts provides options for the process.
