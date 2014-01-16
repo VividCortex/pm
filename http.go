@@ -119,6 +119,12 @@ func (pl *Proclist) handleCancelReq(w http.ResponseWriter, r *http.Request, id s
 }
 
 func (pl *Proclist) handleProcsReq(w http.ResponseWriter, r *http.Request) {
+	pl.mu.RLock()
+	for key, value := range pl.opts.HttpHeaders {
+		w.Header().Set(key, value)
+	}
+	pl.mu.RUnlock()
+
 	path := r.URL.Path
 	if path == "/procs/" {
 		if r.Method == "GET" {
