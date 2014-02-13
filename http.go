@@ -119,11 +119,7 @@ func (pl *Proclist) handleCancelReq(w http.ResponseWriter, r *http.Request, id s
 }
 
 func (pl *Proclist) handleProcsReq(w http.ResponseWriter, r *http.Request) {
-	pl.mu.RLock()
-	for key, value := range pl.opts.HttpHeaders {
-		w.Header().Set(key, value)
-	}
-	pl.mu.RUnlock()
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	path := r.URL.Path
 	if path == "/procs/" {
@@ -153,7 +149,7 @@ func (pl *Proclist) handleProcsReq(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "DELETE" {
 			pl.handleCancelReq(w, r, id)
 		} else if r.Method == "OPTIONS" {
-			httpError(w, http.StatusOK)
+			w.Header().Set("Access-Control-Allow-Methods", "DELETE")
 		} else {
 			httpError(w, http.StatusMethodNotAllowed)
 		}
