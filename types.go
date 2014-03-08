@@ -29,7 +29,7 @@ type ProcResponse struct {
 
 // HistoryDetail encodes one entry from the process' history.
 type HistoryDetail struct {
-	Ts     time.Time `json:"ts"`
+	Ts     time.Duration `json:"cumulativeTime"`
 	Status string    `json:"status"`
 }
 

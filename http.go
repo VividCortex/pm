@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"fmt"
 )
 
 const (
@@ -26,15 +27,15 @@ func (pl *Proclist) getProcs() []ProcDetail {
 				Value: value,
 			})
 		}
-		firstHEntry := p.history.Front().Value.(*historyEntry)
-		lastHEntry := p.history.Back().Value.(*historyEntry)
 
+		// --- Changed StatusTime, Status, and ProcTime
+		fmt.Println("GETTING PROCS")
 		procs = append(procs, ProcDetail{
 			Id:         id,
 			Attrs:      attrs,
-			ProcTime:   firstHEntry.ts,
-			StatusTime: lastHEntry.ts,
-			Status:     lastHEntry.status,
+			ProcTime:   p.initialUpdate,
+			StatusTime: p.latestUpdate,
+			Status:     p.currentStatus,
 			Cancelling: p.cancel.isPending,
 		})
 		p.mu.RUnlock()
@@ -71,22 +72,19 @@ func (pl *Proclist) getHistory(id string) ([]HistoryDetail, error) {
 
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	history := make([]HistoryDetail, 0, p.history.Len())
 
-	entry := p.history.Front()
-	for entry != nil {
-		v := entry.Value.(*historyEntry)
-		history = append(history, HistoryDetail{
-			Ts:     v.ts,
-			Status: v.status,
+	history := make([]HistoryDetail, 0, len(p.history))
+	for entry, _ := range p.history {
+	    history = append(history, HistoryDetail{
+			Ts:					p.history[entry],
+			Status:				p.currentStatus,
 		})
-		entry = entry.Next()
 	}
-
 	return history, nil
 }
 
 func (pl *Proclist) handleHistoryReq(w http.ResponseWriter, r *http.Request, id string) {
+	//fmt.Println("ARE WE IN HERE YET ?!?!?!?!??!?!?!??!?!?!?!?!?!")
 	history, err := pl.getHistory(id)
 	if err != nil {
 		httpError(w, http.StatusNotFound)
