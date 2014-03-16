@@ -6,7 +6,9 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -60,6 +62,11 @@ type Line struct {
 }
 
 func main() {
+	flag.StringVar(&Endpoints, "endpoints", Endpoints, "Comma-separated host:port list of APIs to poll")
+	flag.DurationVar(&RefreshInterval, "interval", RefreshInterval, "Delay between refreshes")
+	flag.IntVar(&ScreenHeight, "screen-height", ScreenHeight, "Height of terminal, in lines of text")
+	flag.IntVar(&ScreenWidth, "screen-width", ScreenWidth, "Width of terminal, in columns of text")
+	flag.Parse()
 
 	// Set global HTTP read timeout (just for the headers of the request)
 	http.DefaultTransport.(*http.Transport).ResponseHeaderTimeout = time.Second
@@ -114,7 +121,7 @@ func poll(hostPort string, ticker <-chan time.Time) {
 	for _ = range ticker {
 		res, err := http.Get(hostPort + "/procs/")
 		if err != nil {
-			fmt.Println(hostPort, err)
+			log.Println(hostPort, err)
 			continue
 		}
 		if res.StatusCode == 200 {
@@ -122,7 +129,7 @@ func poll(hostPort string, ticker <-chan time.Time) {
 			dec := json.NewDecoder(res.Body)
 			err := dec.Decode(&msg)
 			if err != nil {
-				fmt.Println(hostPort, err)
+				log.Println(hostPort, err)
 			} else {
 				for _, p := range msg.Procs {
 					l := Line{
@@ -147,7 +154,7 @@ func poll(hostPort string, ticker <-chan time.Time) {
 				}
 			}
 		} else {
-			fmt.Println(hostPort, res.Status)
+			log.Println(hostPort, res.Status)
 		}
 	}
 }
