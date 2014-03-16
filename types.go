@@ -1,5 +1,8 @@
 package pm
 
+// Copyright (c) 2013 VividCortex, Inc. All rights reserved.
+// Please see the LICENSE file for applicable license terms.
+
 import (
 	"time"
 )
