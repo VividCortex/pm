@@ -24,17 +24,6 @@ func attrMapEquals(m1, m2 map[string]interface{}) bool {
 	return true
 }
 
-func attrMap(t *testing.T, p *ProcDetail) map[string]interface{} {
-	attrs := make(map[string]interface{})
-	for _, attr := range p.Attrs {
-		if _, present := attrs[attr.Name]; present {
-			t.Error("attribute doubly defined:", attr.Name)
-		}
-		attrs[attr.Name] = attr.Value
-	}
-	return attrs
-}
-
 func procMapEquals(t *testing.T, m1, m2 map[string]ProcDetail) bool {
 	if len(m1) != len(m2) {
 		return false
@@ -44,7 +33,7 @@ func procMapEquals(t *testing.T, m1, m2 map[string]ProcDetail) bool {
 			return false
 		} else if v1.Id != v2.Id || v1.Status != v2.Status || v1.Cancelling != v2.Cancelling {
 			return false
-		} else if !attrMapEquals(attrMap(t, &v1), attrMap(t, &v2)) {
+		} else if !attrMapEquals(v1.Attrs, v2.Attrs) {
 			return false
 		}
 	}
@@ -138,10 +127,10 @@ func TestProclist(t *testing.T) {
 		t.Error("bad status for req2; expecting 'init', got ", p2.Status)
 	}
 
-	if !attrMapEquals(attrMap(t, &p1), attrs1) {
+	if !attrMapEquals(p1.Attrs, attrs1) {
 		t.Error("bad attribute set for req1")
 	}
-	if !attrMapEquals(attrMap(t, &p2), attrs2) {
+	if !attrMapEquals(p2.Attrs, attrs2) {
 		t.Error("bad attribute set for req2")
 	}
 
