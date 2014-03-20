@@ -132,7 +132,6 @@ import (
 	"errors"
 	"sync"
 	"time"
-	"fmt"
 )
 
 // Type Proclist is the main type for the process-list. You may have as many as
@@ -158,6 +157,22 @@ type ProclistOpts struct {
 type ProcOpts struct {
 	StopCancelPanic bool // Stop cancel-related panics at Done()
 	ForbidCancel    bool // Forbid cancellation requests
+}
+
+// --- Helper Method for comparing Strings faster ---
+func StringCompare(a, b string) int {
+	var min = len(b)
+  	if len(a) < len(b) {
+    	min = len(a)
+  	}
+  	var diff int
+  	for i := 0; i < min && diff == 0; i++ {
+    	diff = int(a[i]) - int(b[i])
+  	}
+  	if diff == 0 {
+    	diff = len(a) - len(b)
+  	}
+	return diff
 }
 
 // --- NEW STRUCTURE ---
@@ -228,10 +243,10 @@ func (pl *Proclist) Start(id string, opts *ProcOpts, attrs *map[string]interface
 		p.history = make(map[string]time.Duration)
 	}
 
-	// --- Initialize latestUpdate ---
-	fmt.Println("Adding Event... ")
+	// --- Initialize the History ---
 	p.currentStatus="init"
 	p.initialUpdate=time.Now()
+	p.latestUpdate=time.Now()
 	p.addHistoryEntry(time.Now(), "init")
 
 	pl.mu.Lock()
@@ -290,24 +305,42 @@ func (p *proc) doCancel() {
 
 // addHistoryEntry pushes a new entry to the processes' history, assuming the
 // lock is already held.
-// ---------------- THIS WHOLE THING IS DIFFERENT -----------------
 func (p *proc) addHistoryEntry(ts time.Time, status string) {
 
 	// --- Does Status already exist? ---
-	_, ok := p.history[status]
+	_, exist := p.history[status]
 
-	// If entry doesn't exist ---> Create Event: (p[status]=0)
-	if (!ok) {
+	// --- Previous Map ---
+	/*
+	fmt.Println("-----------------------------------")
+	fmt.Println("Old Map of Process "+p.id+": ")
+	for key, value := range p.history {
+    	fmt.Println("Key:", key, "\tTotal Duration:", value)
+	}*/
+
+	// --- If entry doesn't exist ---> Create Event: (p[status]=0) ---
+	if (!exist) {
+		//fmt.Printf("Adding a new Event: (%s) to Process #%s\n", status, p.id)
 		p.history[status]=0
 	}
 
-	// --- Updating the Cumulative Time of the status we are changing from ---
-	p.history[p.currentStatus]+=(time.Since(p.latestUpdate))
+	// --- Is this a new event? ---
+	if (status != p.currentStatus) {
+		// --- Updating the Cumulative Time of the status we are changing from ---
+		p.history[p.currentStatus]+=(time.Since(p.latestUpdate))
 
-	// --- Update the last TimeStamp and the CurrentStatus ---
-	p.currentStatus=status
-	p.latestUpdate=ts
+		// --- Update the last TimeStamp and the CurrentStatus ---
+		p.currentStatus=status
+		p.latestUpdate=ts
+	}
 
+
+	// --- New Map ---
+	/*
+	fmt.Println("New Map of Process "+p.id+": ")
+	for key, value := range p.history {
+    	fmt.Println("Key:", key, "\tTotal Duration:", value)
+	}*/
 }
 
 // Status changes the status for a task in a Proclist, adding an item to the
@@ -452,7 +485,6 @@ func SetOptions(opts ProclistOpts) {
 // are not provided (nil), Start() will snapshot the global options for the
 // process list set by SetOptions().
 func Start(id string, opts *ProcOpts, attrs *map[string]interface{}) {
-	//fmt.Println("Here")
 	DefaultProclist.Start(id, opts, attrs)
 }
 

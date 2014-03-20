@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 	"fmt"
+	"reflect"
 )
 
 const (
@@ -20,16 +21,12 @@ func (pl *Proclist) getProcs() []ProcDetail {
 
 	for id, p := range pl.procs {
 		p.mu.RLock()
-		attrs := make([]AttrDetail, 0, len(p.attrs))
+		attrs := make(map[string]interface{})
 		for name, value := range p.attrs {
-			attrs = append(attrs, AttrDetail{
-				Name:  name,
-				Value: value,
-			})
+			attrs[name] = value
 		}
 
 		// --- Changed StatusTime, Status, and ProcTime
-		fmt.Println("GETTING PROCS")
 		procs = append(procs, ProcDetail{
 			Id:         id,
 			Attrs:      attrs,
@@ -62,6 +59,7 @@ func (pl *Proclist) handleProclistReq(w http.ResponseWriter, r *http.Request) {
 }
 
 func (pl *Proclist) getHistory(id string) ([]HistoryDetail, error) {
+
 	pl.mu.RLock()
 	p, present := pl.procs[id]
 	pl.mu.RUnlock()
@@ -73,19 +71,38 @@ func (pl *Proclist) getHistory(id string) ([]HistoryDetail, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
+	// --- Fill in the duration for the latest status change ---
+	p.history[p.currentStatus]+=(time.Since(p.latestUpdate))
+
+	// ------------------ Validation ----------------
+	//fmt.Println("-------------------------------------")
+	//fmt.Printf("Process %s: \n", id)
+
 	history := make([]HistoryDetail, 0, len(p.history))
-	for entry, _ := range p.history {
+	for entry, value := range p.history {
 	    history = append(history, HistoryDetail{
-			Ts:					p.history[entry],
-			Status:				p.currentStatus,
+			Ts:					value,
+			Status:				entry,
 		})
+		//fmt.Println("Adding... [(Status: ", entry, ")\t (Cumulative Duration:", value,")")
 	}
+	//fmt.Println(" ")
+
 	return history, nil
+
 }
 
 func (pl *Proclist) handleHistoryReq(w http.ResponseWriter, r *http.Request, id string) {
-	//fmt.Println("ARE WE IN HERE YET ?!?!?!?!??!?!?!??!?!?!?!?!?!")
+
 	history, err := pl.getHistory(id)
+
+	// ------------------ Validation ----------------
+	fmt.Println("History.............")
+	for entry := range history {
+		fmt.Println(reflect.TypeOf(history[entry]))
+	} 
+	fmt.Println(" ")
+
 	if err != nil {
 		httpError(w, http.StatusNotFound)
 	}

@@ -4,17 +4,11 @@ import (
 	"time"
 )
 
-// AttrDetail encodes a single, user-defined name/value pair.
-type AttrDetail struct {
-	Name  string      `json:"name"`
-	Value interface{} `json:"value"`
-}
-
 // Type ProcDetail encodes a full process list from the server, including an
 // attributes array with application-defined names/values.
 type ProcDetail struct {
 	Id         string       `json:"id"`
-	Attrs      []AttrDetail `json:"attrs,omitempty"`
+	Attrs      map[string]interface{} `json:"attrs,omitempty"`
 	ProcTime   time.Time    `json:"procTime"`
 	StatusTime time.Time    `json:"statusTime"`
 	Status     string       `json:"status"`
@@ -25,7 +19,7 @@ type ProcDetail struct {
 type ProcResponse struct {
 	Procs      []ProcDetail `json:"procs"`
 	ServerTime time.Time    `json:"serverTime"`
-}
+	}
 
 // HistoryDetail encodes one entry from the process' history.
 type HistoryDetail struct {
