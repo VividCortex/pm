@@ -159,23 +159,6 @@ type ProcOpts struct {
 	ForbidCancel    bool // Forbid cancellation requests
 }
 
-// --- Helper Method for comparing Strings faster ---
-func StringCompare(a, b string) int {
-	var min = len(b)
-	if len(a) < len(b) {
-		min = len(a)
-	}
-	var diff int
-	for i := 0; i < min && diff == 0; i++ {
-		diff = int(a[i]) - int(b[i])
-	}
-	if diff == 0 {
-		diff = len(a) - len(b)
-	}
-	return diff
-}
-
-// --- NEW STRUCTURE ---
 type proc struct {
 	mu      sync.RWMutex
 	id      string
@@ -243,7 +226,6 @@ func (pl *Proclist) Start(id string, opts *ProcOpts, attrs *map[string]interface
 		p.history = make(map[string]time.Duration)
 	}
 
-	// --- Initialize the History ---
 	p.currentStatus = "init"
 	p.initialUpdate = time.Now()
 	p.latestUpdate = time.Now()
@@ -309,33 +291,16 @@ func (p *proc) addHistoryEntry(ts time.Time, status string) {
 
 	_, exist := p.history[status]
 
-	// --- Uncomment for Validation purposes---
-	/*
-		fmt.Println("-----------------------------------")
-		fmt.Println("Old Map of Process "+p.id+": ")
-		for key, value := range p.history {
-	    	fmt.Println("Key:", key, "\tTotal Duration:", value)
-		}*/
-
 	if !exist {
 		p.history[status] = 0
 	}
 
-	// --- Is this a new event? ---
 	if status != p.currentStatus {
 		p.history[p.currentStatus] += (time.Since(p.latestUpdate))
 	}
 
-	// --- Update the last TimeStamp and the CurrentStatus ---
 	p.currentStatus = status
 	p.latestUpdate = ts
-
-	// --- Uncomment for Validation purposes ---
-	/*
-		fmt.Println("New Map of Process "+p.id+": ")
-		for key, value := range p.history {
-	    	fmt.Println("Key:", key, "\tTotal Duration:", value)
-		}*/
 }
 
 // Status changes the status for a task in a Proclist, adding an item to the
