@@ -3,9 +3,9 @@ package pm
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
-	"reflect"
 )
 
 const (
@@ -71,15 +71,15 @@ func (pl *Proclist) getHistory(id string) ([]HistoryDetail, error) {
 	defer p.mu.RUnlock()
 
 	// --- Fill in the duration for the latest status change ---
-	p.history[p.currentStatus]+=(time.Since(p.latestUpdate))
-	p.latestUpdate=time.Now()
+	p.history[p.currentStatus] += (time.Since(p.latestUpdate))
+	p.latestUpdate = time.Now()
 
 	// --- Map -> Array
 	history := make([]HistoryDetail, 0, len(p.history))
 	for entry, value := range p.history {
-	    history = append(history, HistoryDetail{
-			Ts:					value.String(),
-			Status:				entry,
+		history = append(history, HistoryDetail{
+			Ts:     value.String(),
+			Status: entry,
 		})
 	}
 

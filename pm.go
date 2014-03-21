@@ -162,16 +162,16 @@ type ProcOpts struct {
 // --- Helper Method for comparing Strings faster ---
 func StringCompare(a, b string) int {
 	var min = len(b)
-  	if len(a) < len(b) {
-    	min = len(a)
-  	}
-  	var diff int
-  	for i := 0; i < min && diff == 0; i++ {
-    	diff = int(a[i]) - int(b[i])
-  	}
-  	if diff == 0 {
-    	diff = len(a) - len(b)
-  	}
+	if len(a) < len(b) {
+		min = len(a)
+	}
+	var diff int
+	for i := 0; i < min && diff == 0; i++ {
+		diff = int(a[i]) - int(b[i])
+	}
+	if diff == 0 {
+		diff = len(a) - len(b)
+	}
 	return diff
 }
 
@@ -185,10 +185,10 @@ type proc struct {
 		isPending bool
 		message   string
 	}
-	opts ProcOpts
-    currentStatus string
-    latestUpdate time.Time
-    initialUpdate time.Time
+	opts          ProcOpts
+	currentStatus string
+	latestUpdate  time.Time
+	initialUpdate time.Time
 }
 
 type historyEntry struct {
@@ -244,9 +244,9 @@ func (pl *Proclist) Start(id string, opts *ProcOpts, attrs *map[string]interface
 	}
 
 	// --- Initialize the History ---
-	p.currentStatus="init"
-	p.initialUpdate=time.Now()
-	p.latestUpdate=time.Now()
+	p.currentStatus = "init"
+	p.initialUpdate = time.Now()
+	p.latestUpdate = time.Now()
 	p.addHistoryEntry(time.Now(), "init")
 
 	pl.mu.Lock()
@@ -311,33 +311,31 @@ func (p *proc) addHistoryEntry(ts time.Time, status string) {
 
 	// --- Uncomment for Validation purposes---
 	/*
-	fmt.Println("-----------------------------------")
-	fmt.Println("Old Map of Process "+p.id+": ")
-	for key, value := range p.history {
-    	fmt.Println("Key:", key, "\tTotal Duration:", value)
-	}*/
+		fmt.Println("-----------------------------------")
+		fmt.Println("Old Map of Process "+p.id+": ")
+		for key, value := range p.history {
+	    	fmt.Println("Key:", key, "\tTotal Duration:", value)
+		}*/
 
-	if (!exist) {
-		p.history[status]=0;
+	if !exist {
+		p.history[status] = 0
 	}
 
 	// --- Is this a new event? ---
-	if (status != p.currentStatus) {
-		p.history[p.currentStatus]+=(time.Since(p.latestUpdate));
+	if status != p.currentStatus {
+		p.history[p.currentStatus] += (time.Since(p.latestUpdate))
 	}
 
 	// --- Update the last TimeStamp and the CurrentStatus ---
-	p.currentStatus=status;
-	p.latestUpdate=ts;
-
-
+	p.currentStatus = status
+	p.latestUpdate = ts
 
 	// --- Uncomment for Validation purposes ---
 	/*
-	fmt.Println("New Map of Process "+p.id+": ")
-	for key, value := range p.history {
-    	fmt.Println("Key:", key, "\tTotal Duration:", value)
-	}*/
+		fmt.Println("New Map of Process "+p.id+": ")
+		for key, value := range p.history {
+	    	fmt.Println("Key:", key, "\tTotal Duration:", value)
+		}*/
 }
 
 // Status changes the status for a task in a Proclist, adding an item to the
