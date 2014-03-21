@@ -129,7 +129,6 @@ panics, cleaning-up and then re-panic, i.e.:
 package pm
 
 import (
-	"container/list"
 	"errors"
 	"sync"
 	"time"
@@ -164,12 +163,15 @@ type proc struct {
 	mu      sync.RWMutex
 	id      string
 	attrs   map[string]interface{}
-	history list.List
+	history map[string]time.Duration
 	cancel  struct {
 		isPending bool
 		message   string
 	}
-	opts ProcOpts
+	opts          ProcOpts
+	currentStatus string
+	latestUpdate  time.Time
+	initialUpdate time.Time
 }
 
 type historyEntry struct {
@@ -219,6 +221,14 @@ func (pl *Proclist) Start(id string, opts *ProcOpts, attrs *map[string]interface
 	} else {
 		p.attrs = make(map[string]interface{})
 	}
+
+	if p.history == nil {
+		p.history = make(map[string]time.Duration)
+	}
+
+	p.currentStatus = "init"
+	p.initialUpdate = time.Now()
+	p.latestUpdate = time.Now()
 	p.addHistoryEntry(time.Now(), "init")
 
 	pl.mu.Lock()
@@ -278,10 +288,19 @@ func (p *proc) doCancel() {
 // addHistoryEntry pushes a new entry to the processes' history, assuming the
 // lock is already held.
 func (p *proc) addHistoryEntry(ts time.Time, status string) {
-	p.history.PushBack(&historyEntry{
-		ts:     ts,
-		status: status,
-	})
+
+	_, exist := p.history[status]
+
+	if !exist {
+		p.history[status] = 0
+	}
+
+	if status != p.currentStatus {
+		p.history[p.currentStatus] += (time.Since(p.latestUpdate))
+	}
+
+	p.currentStatus = status
+	p.latestUpdate = ts
 }
 
 // Status changes the status for a task in a Proclist, adding an item to the

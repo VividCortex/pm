@@ -3,6 +3,7 @@ package pm
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -23,15 +24,14 @@ func (pl *Proclist) getProcs() []ProcDetail {
 		for name, value := range p.attrs {
 			attrs[name] = value
 		}
-		firstHEntry := p.history.Front().Value.(*historyEntry)
-		lastHEntry := p.history.Back().Value.(*historyEntry)
 
+		// --- Changed StatusTime, Status, and ProcTime
 		procs = append(procs, ProcDetail{
 			Id:         id,
 			Attrs:      attrs,
-			ProcTime:   firstHEntry.ts,
-			StatusTime: lastHEntry.ts,
-			Status:     lastHEntry.status,
+			ProcTime:   p.initialUpdate,
+			StatusTime: p.latestUpdate,
+			Status:     p.currentStatus,
 			Cancelling: p.cancel.isPending,
 		})
 		p.mu.RUnlock()
@@ -58,6 +58,7 @@ func (pl *Proclist) handleProclistReq(w http.ResponseWriter, r *http.Request) {
 }
 
 func (pl *Proclist) getHistory(id string) ([]HistoryDetail, error) {
+
 	pl.mu.RLock()
 	p, present := pl.procs[id]
 	pl.mu.RUnlock()
@@ -68,23 +69,28 @@ func (pl *Proclist) getHistory(id string) ([]HistoryDetail, error) {
 
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	history := make([]HistoryDetail, 0, p.history.Len())
 
-	entry := p.history.Front()
-	for entry != nil {
-		v := entry.Value.(*historyEntry)
+	// --- Fill in the duration for the latest status change ---
+	p.history[p.currentStatus] += (time.Since(p.latestUpdate))
+	p.latestUpdate = time.Now()
+
+	// --- Map -> Array
+	history := make([]HistoryDetail, 0, len(p.history))
+	for entry, value := range p.history {
 		history = append(history, HistoryDetail{
-			Ts:     v.ts,
-			Status: v.status,
+			Ts:     value.String(),
+			Status: entry,
 		})
-		entry = entry.Next()
 	}
 
 	return history, nil
+
 }
 
 func (pl *Proclist) handleHistoryReq(w http.ResponseWriter, r *http.Request, id string) {
+
 	history, err := pl.getHistory(id)
+
 	if err != nil {
 		httpError(w, http.StatusNotFound)
 	}
