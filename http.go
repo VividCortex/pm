@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"fmt"
+	"reflect"
 )
 
 const (
@@ -72,20 +72,16 @@ func (pl *Proclist) getHistory(id string) ([]HistoryDetail, error) {
 
 	// --- Fill in the duration for the latest status change ---
 	p.history[p.currentStatus]+=(time.Since(p.latestUpdate))
+	p.latestUpdate=time.Now()
 
-	// ------------------ Validation ----------------
-	//fmt.Println("-------------------------------------")
-	//fmt.Printf("Process %s: \n", id)
-
+	// --- Map -> Array
 	history := make([]HistoryDetail, 0, len(p.history))
 	for entry, value := range p.history {
 	    history = append(history, HistoryDetail{
-			Ts:					value,
+			Ts:					value.String(),
 			Status:				entry,
 		})
-		//fmt.Println("Adding... [(Status: ", entry, ")\t (Cumulative Duration:", value,")")
 	}
-	//fmt.Println(" ")
 
 	return history, nil
 
@@ -94,13 +90,6 @@ func (pl *Proclist) getHistory(id string) ([]HistoryDetail, error) {
 func (pl *Proclist) handleHistoryReq(w http.ResponseWriter, r *http.Request, id string) {
 
 	history, err := pl.getHistory(id)
-
-	// ------------------ Validation ----------------
-	fmt.Println("History.............")
-	for entry := range history {
-		fmt.Println(history[entry])
-	} 
-	fmt.Println(" ")
 
 	if err != nil {
 		httpError(w, http.StatusNotFound)

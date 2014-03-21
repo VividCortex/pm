@@ -307,10 +307,9 @@ func (p *proc) doCancel() {
 // lock is already held.
 func (p *proc) addHistoryEntry(ts time.Time, status string) {
 
-	// --- Does Status already exist? ---
 	_, exist := p.history[status]
 
-	// --- Previous Map ---
+	// --- Uncomment for Validation purposes---
 	/*
 	fmt.Println("-----------------------------------")
 	fmt.Println("Old Map of Process "+p.id+": ")
@@ -318,24 +317,22 @@ func (p *proc) addHistoryEntry(ts time.Time, status string) {
     	fmt.Println("Key:", key, "\tTotal Duration:", value)
 	}*/
 
-	// --- If entry doesn't exist ---> Create Event: (p[status]=0) ---
 	if (!exist) {
-		//fmt.Printf("Adding a new Event: (%s) to Process #%s\n", status, p.id)
-		p.history[status]=0
+		p.history[status]=0;
 	}
 
 	// --- Is this a new event? ---
 	if (status != p.currentStatus) {
-		// --- Updating the Cumulative Time of the status we are changing from ---
-		p.history[p.currentStatus]+=(time.Since(p.latestUpdate))
-
-		// --- Update the last TimeStamp and the CurrentStatus ---
-		p.currentStatus=status
-		p.latestUpdate=ts
+		p.history[p.currentStatus]+=(time.Since(p.latestUpdate));
 	}
 
+	// --- Update the last TimeStamp and the CurrentStatus ---
+	p.currentStatus=status;
+	p.latestUpdate=ts;
 
-	// --- New Map ---
+
+
+	// --- Uncomment for Validation purposes ---
 	/*
 	fmt.Println("New Map of Process "+p.id+": ")
 	for key, value := range p.history {
