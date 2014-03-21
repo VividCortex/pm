@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 	"fmt"
-	"reflect"
 )
 
 const (
@@ -99,7 +98,7 @@ func (pl *Proclist) handleHistoryReq(w http.ResponseWriter, r *http.Request, id 
 	// ------------------ Validation ----------------
 	fmt.Println("History.............")
 	for entry := range history {
-		fmt.Println(reflect.TypeOf(history[entry]))
+		fmt.Println(history[entry])
 	} 
 	fmt.Println(" ")
 
