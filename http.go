@@ -16,15 +16,12 @@ func (pl *Proclist) getProcs() []ProcDetail {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
 	procs := make([]ProcDetail, 0, len(pl.procs))
-
 	for id, p := range pl.procs {
 		p.mu.RLock()
 		attrs := make(map[string]interface{})
 		for name, value := range p.attrs {
 			attrs[name] = value
 		}
-
-		// --- Changed StatusTime, Status, and ProcTime
 		procs = append(procs, ProcDetail{
 			Id:         id,
 			Attrs:      attrs,
@@ -35,7 +32,6 @@ func (pl *Proclist) getProcs() []ProcDetail {
 		})
 		p.mu.RUnlock()
 	}
-
 	return procs
 }
 
@@ -57,7 +53,6 @@ func (pl *Proclist) handleProclistReq(w http.ResponseWriter, r *http.Request) {
 }
 
 func (pl *Proclist) getHistory(id string) ([]HistoryDetail, error) {
-
 	pl.mu.RLock()
 	p, present := pl.procs[id]
 	pl.mu.RUnlock()
@@ -68,22 +63,17 @@ func (pl *Proclist) getHistory(id string) ([]HistoryDetail, error) {
 
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-
-	// --- Fill in the duration for the latest status change ---
-	p.history[p.currentStatus] += (time.Since(p.latestUpdate))
+	p.history[p.currentStatus] += time.Since(p.latestUpdate)
 	p.latestUpdate = time.Now()
-
-	// --- Map -> Array
 	history := make([]HistoryDetail, 0, len(p.history))
+
 	for entry, value := range p.history {
 		history = append(history, HistoryDetail{
 			Ts:     value.String(),
 			Status: entry,
 		})
 	}
-
 	return history, nil
-
 }
 
 func (pl *Proclist) handleHistoryReq(w http.ResponseWriter, r *http.Request, id string) {
