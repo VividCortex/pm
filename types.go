@@ -23,8 +23,8 @@ type ProcResponse struct {
 
 // HistoryDetail encodes one entry from the process' history.
 type HistoryDetail struct {
-	Ts     time.Time `json:"ts"`
-	Status string    `json:"status"`
+	Ts     string `json:"cumulativeTime"`
+	Status string `json:"status"`
 }
 
 // HistoryResponse is the response for a GET to /proc/<id>/history.
