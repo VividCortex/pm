@@ -221,7 +221,6 @@ func (pl *Proclist) Start(id string, opts *ProcOpts, attrs *map[string]interface
 	} else {
 		p.attrs = make(map[string]interface{})
 	}
-
 	if p.history == nil {
 		p.history = make(map[string]time.Duration)
 	}
@@ -288,18 +287,14 @@ func (p *proc) doCancel() {
 // addHistoryEntry pushes a new entry to the processes' history, assuming the
 // lock is already held.
 func (p *proc) addHistoryEntry(ts time.Time, status string) {
-
 	_, exist := p.history[status]
-
 	if !exist {
 		p.history[status] = 0
 	}
-
 	if status != p.currentStatus {
 		p.history[p.currentStatus] += (time.Since(p.latestUpdate))
+		p.currentStatus = status
 	}
-
-	p.currentStatus = status
 	p.latestUpdate = ts
 }
 

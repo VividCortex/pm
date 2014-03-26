@@ -57,7 +57,6 @@ func (pl *Proclist) handleProclistReq(w http.ResponseWriter, r *http.Request) {
 }
 
 func (pl *Proclist) getHistory(id string) ([]HistoryDetail, error) {
-
 	pl.mu.RLock()
 	p, present := pl.procs[id]
 	pl.mu.RUnlock()
@@ -65,29 +64,24 @@ func (pl *Proclist) getHistory(id string) ([]HistoryDetail, error) {
 	if !present {
 		return []HistoryDetail{}, ErrNoSuchProcess
 	}
-
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-
-	// --- Fill in the duration for the latest status change ---
-	p.history[p.currentStatus] += (time.Since(p.latestUpdate))
-	p.latestUpdate = time.Now()
-
-	// --- Map -> Array
+	//p.history[p.currentStatus] += (time.Since(p.latestUpdate))
+	//p.latestUpdate = time.Now()
 	history := make([]HistoryDetail, 0, len(p.history))
 	for entry, value := range p.history {
+		if entry == p.currentStatus {
+			value += time.Since(p.latestUpdate)
+		}
 		history = append(history, HistoryDetail{
 			Ts:     value.String(),
 			Status: entry,
 		})
 	}
-
 	return history, nil
-
 }
 
 func (pl *Proclist) handleHistoryReq(w http.ResponseWriter, r *http.Request, id string) {
-
 	history, err := pl.getHistory(id)
 
 	if err != nil {
