@@ -63,10 +63,7 @@ func (pl *Proclist) getHistory(id string) ([]HistoryDetail, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	p.history[p.currentStatus] += time.Since(p.latestUpdate)
-	p.latestUpdate = time.Now()
 	history := make([]HistoryDetail, 0, len(p.history))
-
 	for entry, value := range p.history {
 		if entry == p.currentStatus {
 			value += time.Since(p.latestUpdate)
