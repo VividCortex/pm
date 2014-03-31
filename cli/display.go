@@ -8,6 +8,10 @@ import (
 	"strings"
 )
 
+func checkTermSize() {
+	ScreenHeight, ScreenWidth = getTermSize()
+}
+
 func getTermSize() (int, int) {
 	cmd := exec.Command("stty", "size")
 	cmd.Stdin = os.Stdin

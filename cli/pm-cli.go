@@ -7,7 +7,6 @@ import (
 
 	"flag"
 	"fmt"
-	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -15,8 +14,10 @@ import (
 )
 
 var (
-	Endpoints = "" // e.g. "api1:9085,api2:9085,api1:9086,api2:9086"
-	clients   = map[string]*client.Client{}
+	Endpoints       = "" // e.g. "api1:9085,api2:9085,api1:9086,api2:9086"
+	KeepHist        = true
+	RefreshInterval = time.Second
+	clients         = map[string]*client.Client{}
 
 	ScreenHeight = 40
 	ScreenWidth  = 160
@@ -42,48 +43,19 @@ type Line struct {
 	Cols               map[string]string
 }
 
+func init() {
+	// disable input buffering
+	exec.Command("stty", "-f", "/dev/tty", "cbreak").Run()
+	checkTermSize()
+}
+
 func main() {
 	flag.StringVar(&Endpoints, "endpoints", Endpoints, "Comma-separated host:port list of APIs to poll")
+	flag.BoolVar(&KeepHist, "keep-hist", KeepHist, "Keep output history on refreshes")
+	flag.DurationVar(&RefreshInterval, "refresh", RefreshInterval, "Time interval between refreshes")
 	flag.Parse()
 
-	ticker := multitick.NewTicker(time.Second, time.Second)
-
-	go func() {
-		// disable input buffering
-		exec.Command("stty", "-f", "/dev/tty", "cbreak").Run()
-
-		var b []byte = make([]byte, 1)
-		for {
-			os.Stdin.Read(b)
-			switch string(b) {
-			case "k":
-				paused = true
-
-				host := ""
-				id := ""
-				message := ""
-				fmt.Println()
-				host = readString("Host: ")
-				id = readString("ID: ")
-				message = readString("Message: ")
-				fmt.Printf("Killing ID %s on %s with message %s.\n", id, host, message)
-				if !strings.HasPrefix(host, "http://") && !strings.HasPrefix(host, "https://") {
-					host = "http://" + host
-				}
-
-				client, exists := clients[host]
-				if exists {
-					client.Kill(id, message)
-				}
-
-				paused = false
-			case "p":
-				paused = !paused
-			case "q":
-				os.Exit(0)
-			}
-		}
-	}()
+	ticker := multitick.NewTicker(RefreshInterval, RefreshInterval)
 
 	endpoints := strings.Split(Endpoints, ",")
 	for _, e := range endpoints {
@@ -96,13 +68,16 @@ func main() {
 	}
 
 	go top(ticker.Subscribe())
+	go inputLoop()
 
 	clearScreen(true)
 	for lines := range Display {
 		if paused {
 			continue
 		}
-		clearScreen(false)
+
+		checkTermSize()
+		clearScreen(KeepHist)
 
 		// Compute and print column headers
 		lineFormat := ""
@@ -127,7 +102,7 @@ func main() {
 				output = output[:ScreenWidth]
 			}
 			fmt.Println(output)
-			if printed == ScreenHeight {
+			if printed == ScreenHeight-1 {
 				break
 			}
 		}
@@ -170,7 +145,6 @@ func msgToLines(hostPort string, msg *pm.ProcResponse) {
 
 // aggregate, sort, and batch up the data coming from the pm APIs.
 func top(ticker <-chan time.Time) {
-	ScreenHeight, ScreenWidth = getTermSize()
 	var Lines []Line
 	for {
 		select {
@@ -182,23 +156,6 @@ func top(ticker <-chan time.Time) {
 			Lines = Lines[0:0]
 		}
 	}
-}
-
-func readKey() string {
-	var b []byte = make([]byte, 1)
-	os.Stdin.Read(b)
-	return string(b)
-}
-
-func readString(prompt string) string {
-	//exec.Command("stty", "-f", "/dev/tty", "cbreak", "min", "100").Run()
-	exec.Command("stty", "-f", "/dev/tty", "cooked").Run()
-
-	read := ""
-	fmt.Print(prompt + " ")
-
-	fmt.Scanf("%s", &read)
-	return read
 }
 
 // ByAge implements sort.Interface for []line based on
