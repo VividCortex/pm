@@ -22,12 +22,9 @@ func (pl *Proclist) getProcs() []ProcDetail {
 
 	for id, p := range pl.procs {
 		p.mu.RLock()
-		attrs := make([]AttrDetail, 0, len(p.attrs))
+		attrs := make(map[string]interface{})
 		for name, value := range p.attrs {
-			attrs = append(attrs, AttrDetail{
-				Name:  name,
-				Value: value,
-			})
+			attrs[name] = value
 		}
 		firstHEntry := p.history.Front().Value.(*historyEntry)
 		lastHEntry := p.history.Back().Value.(*historyEntry)

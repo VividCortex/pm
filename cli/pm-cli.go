@@ -1,29 +1,29 @@
-// Program cli is a commandline client for the pm processlist manager.
 package main
 
-// Copyright (c) 2014 VividCortex, Inc. All rights reserved.
-// Please see the LICENSE file for applicable license terms.
-
 import (
-	"encoding/json"
+	"github.com/VividCortex/multitick"
+	"github.com/VividCortex/pm"
+	"github.com/VividCortex/pm/client"
+
 	"flag"
 	"fmt"
-	"log"
-	"net/http"
+	"os/exec"
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/VividCortex/multitick"
 )
 
 var (
-	RefreshInterval = 3 * time.Second
-	ScreenHeight    = 40
-	ScreenWidth     = 160
 	Endpoints       = "" // e.g. "api1:9085,api2:9085,api1:9086,api2:9086"
-	Display         = make(chan []Line)
-	Trickle         = make(chan Line)
+	KeepHist        = true
+	RefreshInterval = time.Second
+	clients         = map[string]*client.Client{}
+
+	ScreenHeight = 40
+	ScreenWidth  = 160
+
+	Display = make(chan []Line)
+	Trickle = make(chan Line)
 
 	// These might need to be protected by mutexes
 	Columns   = []string{"Host", "Id", "Time", "Status"}
@@ -33,58 +33,51 @@ var (
 		"Time":   len("300.123s"),
 		"Status": len("this one is a long enough status!"),
 	}
+
+	paused = false
 )
 
-// Message is the response from the pm server, retrieved from /procs/.
-type Message struct {
-	Procs      []Proc
-	ServerTime time.Time
-}
-
-// Proc is a single process within the Message.
-type Proc struct {
-	Id                   string
-	Status               string
-	Attrs                []Attr
-	ProcTime, StatusTime time.Time
-}
-
-// Attr is a process's attribute.
-type Attr struct {
-	Name, Value string
-}
-
-// Line is one line of output on the terminal.
 type Line struct {
 	Host, Id, Status   string
 	ProcAge, StatusAge time.Duration
 	Cols               map[string]string
 }
 
+func init() {
+	// disable input buffering
+	exec.Command("stty", "-f", "/dev/tty", "cbreak").Run()
+	checkTermSize()
+}
+
 func main() {
 	flag.StringVar(&Endpoints, "endpoints", Endpoints, "Comma-separated host:port list of APIs to poll")
-	flag.DurationVar(&RefreshInterval, "interval", RefreshInterval, "Delay between refreshes")
-	flag.IntVar(&ScreenHeight, "screen-height", ScreenHeight, "Height of terminal, in lines of text")
-	flag.IntVar(&ScreenWidth, "screen-width", ScreenWidth, "Width of terminal, in columns of text")
+	flag.BoolVar(&KeepHist, "keep-hist", KeepHist, "Keep output history on refreshes")
+	flag.DurationVar(&RefreshInterval, "refresh", RefreshInterval, "Time interval between refreshes")
 	flag.Parse()
 
-	// Set global HTTP read timeout (just for the headers of the request)
-	http.DefaultTransport.(*http.Transport).ResponseHeaderTimeout = time.Second
+	ticker := multitick.NewTicker(RefreshInterval, RefreshInterval)
 
-	ticker := multitick.NewTicker(RefreshInterval, time.Second)
 	endpoints := strings.Split(Endpoints, ",")
-
 	for _, e := range endpoints {
 		if !strings.HasPrefix(e, "http://") && !strings.HasPrefix(e, "https://") {
 			e = "http://" + e
 		}
+		clients[e] = client.NewClient(e)
+
 		go poll(e, ticker.Subscribe())
 	}
 
 	go top(ticker.Subscribe())
+	go inputLoop()
 
+	clearScreen(true)
 	for lines := range Display {
-		fmt.Print("\033[2J\033[;H") // clear the screen
+		if paused {
+			continue
+		}
+
+		checkTermSize()
+		clearScreen(KeepHist)
 
 		// Compute and print column headers
 		lineFormat := ""
@@ -109,7 +102,7 @@ func main() {
 				output = output[:ScreenWidth]
 			}
 			fmt.Println(output)
-			if printed == ScreenHeight {
+			if printed == ScreenHeight-1 {
 				break
 			}
 		}
@@ -119,43 +112,34 @@ func main() {
 // poll one of the endpoints for its /procs/ data.
 func poll(hostPort string, ticker <-chan time.Time) {
 	for _ = range ticker {
-		res, err := http.Get(hostPort + "/procs/")
-		if err != nil {
-			log.Println(hostPort, err)
-			continue
+		msg, err := clients[hostPort].Processes()
+		if err == nil {
+			msgToLines(hostPort, msg)
 		}
-		if res.StatusCode == 200 {
-			msg := Message{}
-			dec := json.NewDecoder(res.Body)
-			err := dec.Decode(&msg)
-			if err != nil {
-				log.Println(hostPort, err)
-			} else {
-				for _, p := range msg.Procs {
-					l := Line{
-						Host:      strings.Replace(hostPort, "http://", "", -1),
-						Id:        p.Id,
-						Status:    p.Status,
-						ProcAge:   msg.ServerTime.Sub(p.ProcTime),
-						StatusAge: msg.ServerTime.Sub(p.StatusTime),
-						Cols:      map[string]string{},
-					}
-					for _, a := range p.Attrs {
-						colLen, ok := LengthFor[a.Name]
-						if !ok {
-							Columns = append(Columns, a.Name)
-						}
-						if len(a.Name) > colLen {
-							LengthFor[a.Name] = len(a.Name)
-						}
-						l.Cols[a.Name] = a.Value
-					}
-					Trickle <- l
-				}
+	}
+}
+
+func msgToLines(hostPort string, msg *pm.ProcResponse) {
+	for _, p := range msg.Procs {
+		l := Line{
+			Host:      strings.Replace(hostPort, "http://", "", -1),
+			Id:        p.Id,
+			Status:    p.Status,
+			ProcAge:   msg.ServerTime.Sub(p.ProcTime),
+			StatusAge: msg.ServerTime.Sub(p.StatusTime),
+			Cols:      map[string]string{},
+		}
+		for name, value := range p.Attrs {
+			colLen, ok := LengthFor[name]
+			if !ok {
+				Columns = append(Columns, name)
 			}
-		} else {
-			log.Println(hostPort, res.Status)
+			if len(name) > colLen {
+				LengthFor[name] = len(name)
+			}
+			l.Cols[name] = value.(string)
 		}
+		Trickle <- l
 	}
 }
 
