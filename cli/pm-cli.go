@@ -7,7 +7,6 @@ import (
 
 	"flag"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -44,8 +43,7 @@ type Line struct {
 }
 
 func init() {
-	// disable input buffering
-	exec.Command("stty", "-f", "/dev/tty", "cbreak").Run()
+	disableInputBuffering()
 	checkTermSize()
 }
 

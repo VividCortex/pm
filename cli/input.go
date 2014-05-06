@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -47,8 +46,8 @@ func readKey() string {
 
 func readString(prompt string) string {
 	// enable input buffering (cooked mode) temporarily
-	exec.Command("stty", "-f", "/dev/tty", "cooked").Run()
-	defer exec.Command("stty", "-f", "/dev/tty", "cbreak").Run()
+	enableInputBuffering()
+	defer disableInputBuffering()
 
 	read := ""
 	fmt.Print(prompt + " ")
