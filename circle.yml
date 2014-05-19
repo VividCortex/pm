@@ -1,0 +1,17 @@
+machine:
+  environment:
+    GOPATH: /home/ubuntu/go
+
+dependencies:
+  override:
+    - cd $GOPATH/src/github.com/VividCortex/pm && curl -L -s https://raw.github.com/VividCortex/johnny-deps/master/bin/jd | perl - -v -v
+
+checkout:
+  pre:
+    - mkdir -p $GOPATH/src/github.com/VividCortex/
+  post:
+    - mv /home/ubuntu/pm $GOPATH/src/github.com/VividCortex/pm
+
+test:
+  override:
+     - cd $GOPATH/src/github.com/VividCortex/pm && go test -v ./... -race
