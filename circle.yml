@@ -1,17 +1,15 @@
 machine:
   environment:
-    GOPATH: /home/ubuntu/go
+    GOPATH: /home/ubuntu/.go_workspace:/home/ubuntu/.go_project
 
 dependencies:
-  override:
-    - cd $GOPATH/src/github.com/VividCortex/pm && curl -L -s https://raw.github.com/VividCortex/johnny-deps/master/bin/jd | perl - -v -v
-
-checkout:
   pre:
-    - mkdir -p $GOPATH/src/github.com/VividCortex/
-  post:
-    - mv /home/ubuntu/pm $GOPATH/src/github.com/VividCortex/pm
+    - mkdir -p ~/.go_project/src/github.com/VividCortex
+    - ln -s ~/$CIRCLE_PROJECT_REPONAME ~/.go_project/src/github.com/VividCortex
+  override:
+    - curl -L -s https://raw.github.com/VividCortex/johnny-deps/master/bin/jd > ~/bin/jd
+    - perl ~/bin/jd -v -v build -s github.com/VividCortex/$CIRCLE_PROJECT_REPONAME
 
 test:
   override:
-     - cd $GOPATH/src/github.com/VividCortex/pm && go test -v ./... -race
+    - go test -race ./...
