@@ -90,10 +90,14 @@ from Go applications.
 
 Contributing
 ============
+We only accept pull requests for minor fixes or improvements. This includes:
 
-Pull requests (with tests, ideally) are welcome! We're especially interested
-in things such as ways to improve performance or correctness, or to make the code more
-idiomatic Go.
+* Small bug fixes
+* Typos
+* Documentation or comments
+
+Please open issues to discuss new features. Pull requests for new features will be rejected,
+so we recommend forking the repository and making changes in your fork for your use case.
 
 License
 =======
