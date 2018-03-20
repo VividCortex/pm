@@ -10,5 +10,4 @@ jobs:
       - run: mkdir -p /go/src/github.com/VividCortex
       - run: ln -s ~/project /go/src/github.com/VividCortex/$CIRCLE_PROJECT_REPONAME
       - run: cd /go/src/github.com/VividCortex/$CIRCLE_PROJECT_REPONAME && dep ensure -vendor-only
-      - run: cd /go/src/github.com/VividCortex/$CIRCLE_PROJECT_REPONAME && ./vendor/github.com/VividCortex/schema/run.sh
       - run: cd /go/src/github.com/VividCortex/$CIRCLE_PROJECT_REPONAME && go test -race ./...
