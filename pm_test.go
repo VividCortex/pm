@@ -162,8 +162,9 @@ func TestProclist(t *testing.T) {
 	}
 	for i, item := range history {
 		if item.Status != req1Status[i] {
-			t.Error("bad status at position %d; got %s, expected %s",
+			msg := fmt.Sprintf("bad status at position %d; got %s, expected %s",
 				i, item.Status, req1Status[i])
+			t.Error(msg)
 		}
 	}
 }
