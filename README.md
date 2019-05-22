@@ -1,28 +1,25 @@
-pm
-==
+# pm
 
-![build status](https://circleci.com/gh/VividCortex/pm.png?circle-token=f30450460e330fd0e9253c899c6a379e085989e7)
+[![CircleCI](https://circleci.com/gh/VividCortex/pm.svg?style=svg)](https://circleci.com/gh/VividCortex/pm)
 
-pm is a process manager with an HTTP interface. We use it at
+`pm` is a process manager with an HTTP interface. We use it at
 [VividCortex](https://vividcortex.com/) to inspect and manage API server
 programs. It replaces an internal-only project that was similar.
 
-pm is in beta and will change rapidly. Please see the issues list for what's
+`pm` is in beta and will change rapidly. Please see the issues list for what's
 planned, or to suggest changes.
 
 A Processlist is useful for inspecting and managing what's running in a
 program, such as an HTTP server or other server program. Processes within this
 program are user-defined tasks, such as HTTP requests.
 
-Documentation
-=============
+## Documentation
 
 Please read the generated package documentation for both
 [server](http://godoc.org/github.com/VividCortex/pm) and
 [client](http://godoc.org/github.com/VividCortex/pm/client).
 
-Getting Started
-===============
+## Getting Started
 
 Package pm is a process manager with an HTTP monitoring/control interface.
 
@@ -36,7 +33,7 @@ server case, for example), that will be integrated with status/timing
 information.
 
 
-Using pm starts by opening a server port to handle requests for task information
+Using `pm` starts by opening a server port to handle requests for task information
 through HTTP. That goes like this (although you probably want to add error
 checking/handling code):
 
@@ -88,8 +85,8 @@ pm.SetOptions(ProclistOptions{
 See package `pm/client` for an HTTP client implementation you can readily use
 from Go applications.
 
-Contributing
-============
+## Contributing
+
 We only accept pull requests for minor fixes or improvements. This includes:
 
 * Small bug fixes
@@ -99,13 +96,11 @@ We only accept pull requests for minor fixes or improvements. This includes:
 Please open issues to discuss new features. Pull requests for new features will be rejected,
 so we recommend forking the repository and making changes in your fork for your use case.
 
-License
-=======
+## License
 
 Copyright (c) 2013 VividCortex, licensed under the MIT license.
 Please see the LICENSE file for details.
 
-Cat Picture
-===========
+## Cat Picture
 
 ![mechanic cat](http://heidicullinan.files.wordpress.com/2012/03/funny-cat-pictures-lolcats-mechanic-cat-is-on-the-job.jpg)

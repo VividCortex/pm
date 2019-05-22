@@ -1,13 +1,15 @@
 version: 2
 jobs:
   build:
-    docker:
-      - image: circleci/golang:1.9.4-stretch
     working_directory: /go/src/github.com/VividCortex/pm
+    docker: 
+      - image: circleci/golang:1.12.5
+    environment:
+      GO111MODULE: "off"
+
     steps:
       - checkout
-      - run: curl -L -o /go/bin/dep https://github.com/golang/dep/releases/download/v0.4.1/dep-linux-amd64 && chmod +x /go/bin/dep
-      - run: mkdir -p /go/src/github.com/VividCortex
-      - run: ln -s ~/project /go/src/github.com/VividCortex/$CIRCLE_PROJECT_REPONAME
-      - run: cd /go/src/github.com/VividCortex/$CIRCLE_PROJECT_REPONAME && dep ensure -vendor-only
-      - run: cd /go/src/github.com/VividCortex/$CIRCLE_PROJECT_REPONAME && go test -race ./...
+      - run: curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+      - run: dep ensure -v -vendor-only
+      - run: go vet ./...
+      - run: go test -race ./...

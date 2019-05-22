@@ -6,13 +6,13 @@ This package provides an HTTP client to use with pm-enabled processes.
 package client
 
 import (
-	"github.com/VividCortex/pm"
-
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+
+	"github.com/VividCortex/pm"
 )
 
 type Client struct {
@@ -51,7 +51,7 @@ func (c *Client) makeRequest(verb, endpoint string, body, result interface{}) er
 
 	resp, err := c.Do(req)
 	if err == nil && resp.StatusCode > 299 {
-		msg := fmt.Sprintf("HTTP Status Code %d from %s %s\n", resp.Status, verb, c.BaseURI+endpoint)
+		msg := fmt.Sprintf("HTTP Status Code %d from %s %s\n", resp.StatusCode, verb, c.BaseURI+endpoint)
 		err = errors.New(msg)
 	}
 

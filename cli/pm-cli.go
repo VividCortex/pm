@@ -1,15 +1,15 @@
 package main
 
 import (
-	"github.com/VividCortex/multitick"
-	"github.com/VividCortex/pm"
-	"github.com/VividCortex/pm/client"
-
 	"flag"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/VividCortex/multitick"
+	"github.com/VividCortex/pm"
+	"github.com/VividCortex/pm/client"
 )
 
 var (
