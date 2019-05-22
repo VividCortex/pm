@@ -51,7 +51,7 @@ func (c *Client) makeRequest(verb, endpoint string, body, result interface{}) er
 
 	resp, err := c.Do(req)
 	if err == nil && resp.StatusCode > 299 {
-		msg := fmt.Sprintf("HTTP Status Code %d from %s %s\n", resp.Status, verb, c.BaseURI+endpoint)
+		msg := fmt.Sprintf("HTTP Status Code %d from %s %s\n", resp.StatusCode, verb, c.BaseURI+endpoint)
 		err = errors.New(msg)
 	}
 
