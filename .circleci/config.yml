@@ -1,7 +1,7 @@
 version: 2
 jobs:
   build:
-    working_directory: /go/src/github.com/VividCortex/middleware
+    working_directory: /go/src/github.com/VividCortex/pm
     docker: 
       - image: circleci/golang:1.12.5
     environment:
