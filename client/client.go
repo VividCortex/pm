@@ -6,13 +6,13 @@ This package provides an HTTP client to use with pm-enabled processes.
 package client
 
 import (
-	"github.com/VividCortex/pm"
-
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+
+	"github.com/VividCortex/pm"
 )
 
 type Client struct {
