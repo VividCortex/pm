@@ -1,6 +1,6 @@
 # pm
 
-[![CircleCI](https://circleci.com/gh/VividCortex/pm.svg?style=svg)](https://circleci.com/gh/VividCortex/pm)
+![build](https://github.com/VividCortex/pm/workflows/build/badge.svg)
 
 `pm` is a process manager with an HTTP interface. We use it at
 [VividCortex](https://vividcortex.com/) to inspect and manage API server
