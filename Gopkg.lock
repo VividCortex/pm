@@ -3,13 +3,15 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:c48b5479b9e79dac5d1c4cedfca3be3b92fc3360aa8f1f796ba13d9a68ffe126"
   name = "github.com/VividCortex/multitick"
   packages = ["."]
-  revision = "093e689081f93f076729cda83517a5379dd9895d"
+  pruneopts = "UT"
+  revision = "282a3ac778f5ec4e211d33d7b8eacbaed4f861e7"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "21c6d97a01b03b5846e5c8864df225876f69c57130ee750a5183425419c44289"
+  input-imports = ["github.com/VividCortex/multitick"]
   solver-name = "gps-cdcl"
   solver-version = 1
