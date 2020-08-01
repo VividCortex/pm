@@ -21,6 +21,8 @@ jobs:
             build-with: false
     continue-on-error: ${{ matrix.build-with == false }}
     name: Build with ${{ matrix.go }}
+    env:
+      GO111MODULE: on
 
     steps:
     - name: Set up Go
@@ -30,6 +32,16 @@ jobs:
 
     - name: Checkout code
       uses: actions/checkout@v2
+
+    - name: Go mod cache
+      id: cache-go
+      uses: actions/cache@v1
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ matrix.go }}-${{ hashFiles('**/go.sum') }}
+
+    - name: Go mod download
+      run: go mod download 
 
     - name: Vet
       run: |
